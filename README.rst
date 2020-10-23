@@ -3,13 +3,23 @@ loop-dhs
 ========
 
 
-This is a python-based Distributed Hardware Server (DHS) built on the `pydhsfw <https://github.com/tetrahedron-technologies/pydhsfw>`_ package.
+loop-dhs provides a command line tool, loopDHS, which is a python-based Distributed Hardware Server (DHS) built on the `pydhsfw <https://github.com/tetrahedron-technologies/pydhsfw>`_ package.
 
 Description
 ===========
 
-A longer description of your project goes here...
+The loopDHS provides loop detection and classification functionality in support of fully automated macromolecular crystallography data collection.
 
+will communicate with an instance of DCSS
+
+
+Installation
+============
+
+requirements:
+virtualenv
+python 3.8 (might work on 3-6-3.7, I haven't tested)
+pydhsfw
 
 ....
 
@@ -22,6 +32,8 @@ For a loopDHS we will need to open a port than can receive a stream of jpeg imag
 
 RESTful API loop detection and classification  
 ===============================================
+
+loopDHS is currently configured to use Google Cloud Platform (GCP) AutoML vision to generate a deep learning vision model.
 
 1. Train and Download a loop classification and detection model.
 2. Configure a local GPU machine with docker and GCP docker image.

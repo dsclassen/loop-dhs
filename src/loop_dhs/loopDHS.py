@@ -57,7 +57,7 @@ _logger = logging.getLogger(__name__)
 verboselogs.install()
 _logger = verboselogs.VerboseLogger('loopDHS')
 logdir = 'logs'
-logfile = os.path.join(logdir,os.path.basename(__file__) + '.log')
+logfile = os.path.join(logdir,Path(__file__).stem + '.log')
 handler = logging.handlers.RotatingFileHandler(logfile, maxBytes=100000, backupCount=5)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 handler.setFormatter(formatter)
