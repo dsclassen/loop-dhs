@@ -35,6 +35,7 @@ from matplotlib import pyplot as plt
 from dotty_dict.dotty_dict import Dotty
 from dotty_dict import dotty as dot
 from datetime import datetime
+from pathlib import Path
 
 from pydhsfw.processors import  Context, register_message_handler
 from pydhsfw.dhs import Dhs, DhsInit, DhsStart, DhsContext
@@ -193,7 +194,7 @@ def dhs_init(message:DhsInit, context:DhsContext):
         help='Optional alternate DHS Name (e.g. what dcss is expecting this DHS to be named). If omitted then this value is set to be the name of this script.',
         metavar='DHS Name',
         nargs='?',
-        default=os.path.basename(__file__))
+        default=Path(__file__).stem)
     parser.add_argument(
         '-v',
         dest='verbosity',
