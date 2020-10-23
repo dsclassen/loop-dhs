@@ -590,7 +590,7 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
                         _logger.warning(f'DID NOT FIND IMAGE: {file_to_adorn}')
 
             # Here for sending the final operation completed message.
-            elif ao.state.automl_responses_received == ao.state.image_index and not context.state.collect_images:
+            elif ao.state.automl_responses_received == ao.state.image_index:
                 sent = ao.state.image_index
                 _logger.debug(f'SENT: {sent} RECEIVED: {received}' )
                 if context.config.save_images:
@@ -603,9 +603,9 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
             # Here if images received from AutoML is equal to the number sent, BUT we are still in a "collect" mode. i.e. context.state.collect_images = True
             # This would indicate the AutoML is able to keep up with the images being ingested by the JPEG receiver port.
             else:
-                _logger.info('============================================================================')
-                _logger.info(f'SENT: {ao.state.image_index} RECEIVED: {ao.state.automl_responses_received} STATE: {context.state.collect_images}')
-                _logger.info('============================================================================')
+                _logger.error('============================================================================')
+                _logger.error(f'SENT: {ao.state.image_index} RECEIVED: {ao.state.automl_responses_received} STATE: {context.state.collect_images}')
+                _logger.error('============================================================================')
 
 
     # ==============================================================
