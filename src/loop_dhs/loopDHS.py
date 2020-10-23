@@ -603,7 +603,9 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
             # Here if images received from AutoML is equal to the number sent, BUT we are still in a "collect" mode. i.e. context.state.collect_images = True
             # This would indicate the AutoML is able to keep up with the images being ingested by the JPEG receiver port.
             else:
-                _logger.info(f'SENT: {ao.state.image_index} RECEIVED: {ao.state.automl_responses_received}')
+                _logger.info('============================================================================')
+                _logger.info(f'SENT: {ao.state.image_index} RECEIVED: {ao.state.automl_responses_received} STATE: {context.state.collect_images}')
+                _logger.info('============================================================================')
 
 
     # ==============================================================
