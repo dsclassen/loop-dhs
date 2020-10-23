@@ -3,8 +3,7 @@ loop-dhs
 ========
 
 
-Add a short description here!
-
+This is a python-based Distributed Hardware Server (DHS) built ont eh pydhsfw package.
 
 Description
 ===========
