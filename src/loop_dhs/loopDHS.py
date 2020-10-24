@@ -1,18 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-This is a skeleton file that can serve as a starting point for a Python
-console script. To run this script uncomment the following lines in the
-[options.entry_points] section in setup.cfg:
-
-    console_scripts =
-         fibonacci = loop_dhs.skeleton:run
-
-Then run `python setup.py install` which will install the command `fibonacci`
-inside your current environment.
-Besides console scripts, the header (i.e. until _logger...) of this file can
-also be used as template for Python modules.
-
-Note: This skeleton file can be safely removed if not needed!
+loopDHS
 """
 
 import os
@@ -320,26 +308,6 @@ def dcss_start_operation(message:DcssStoHStartOperation, context:Context):
     opid = message.operation_handle
     _logger.info(f"OPERATION: {op}, HANDLE: {opid}")
 
-@register_dcss_start_operation_handler('helloWorld')
-def hello_world_1(message:DcssStoHStartOperation, context:DcssContext):
-    _logger.info("doing the stuff1")
-    activeOps = context.get_active_operations(message.operation_name)
-    _logger.debug(f'Active operations pre-completed={activeOps}')
-    for ao in activeOps:
-        context.get_connection('dcss_conn').send(DcssHtoSOperationUpdate(ao.operation_name, ao.operation_handle, "working on things"))
-        context.get_connection('dcss_conn').send(DcssHtoSOperationCompleted(ao.operation_name, ao.operation_handle, "normal", "h1"))
-    _logger.debug(f'Active operations post-completed={context.get_active_operations(message.operation_name)}')
-
-@register_dcss_start_operation_handler('helloWorld2')
-def hello_world_2(message:DcssStoHStartOperation, context:DcssContext):
-    _logger.info("doing the stuff2")
-    activeOps = context.get_active_operations(message.operation_name)
-    _logger.debug(f'Active operations pre-completed={activeOps}')
-    for ao in activeOps:
-        context.get_connection('dcss_conn').send(DcssHtoSOperationUpdate(ao.operation_name, ao.operation_handle, "working on things2"))
-        context.get_connection('dcss_conn').send(DcssHtoSOperationCompleted(ao.operation_name, ao.operation_handle, "normal", "h2"))
-    _logger.debug(f'Active operations post-completed={context.get_active_operations(message.operation_name)}')
-
 @register_dcss_start_operation_handler('predictOne')
 def predict_one(message:DcssStoHStartOperation, context:DcssContext):
     """
@@ -396,7 +364,6 @@ def get_loop_tip(message:DcssStoHStartOperation, context:DcssContext):
     cam = str(context.config.axis_camera)
     context.get_connection('axis_conn').send(AxisImageRequestMessage(''.join(['camera=',cam])))
  
-
 @register_dcss_start_operation_handler('getLoopInfo')
 def get_loop_info(message:DcssStoHStartOperation, context:DcssContext):
     """
@@ -734,57 +701,19 @@ def empty_jpeg_dir(directory:str):
         os.remove(f)
 
 def run():
-    """Entry point for console_scripts
-    """
+    """Entry point for console_scripts"""
+    #print(sys.argv)
     main(sys.argv[1:])
 
 def main(args):
     """Main entry point for allowing external calls"""
-    pass
 
-dhs = Dhs()
-
-dhs.start()
-
-sigs = {}
+    dhs = Dhs()
+    dhs.start()
+    sigs = {}
+    sigs = {signal.SIGINT, signal.SIGTERM}
+    dhs.wait(sigs)
 
 if __name__ == '__main__':
-    sigs = {signal.SIGINT, signal.SIGTERM}
-    run()
-
-dhs.wait(sigs)
-
-
-
-def setup_logging(loglevel):
-    """Setup basic logging
-
-    Args:
-      loglevel (int): minimum loglevel for emitting messages
-    """
-    logformat = "[%(asctime)s] %(levelname)s:%(name)s:%(message)s"
-    logging.basicConfig(level=loglevel, stream=sys.stdout,
-                        format=logformat, datefmt="%Y-%m-%d %H:%M:%S")
-
-
-def main(args):
-    """Main entry point allowing external calls
-
-    Args:
-      args ([str]): command line parameter list
-    """
-    args = parse_args(args)
-    setup_logging(args.loglevel)
-    _logger.debug("Starting crazy calculations...")
-    print("The {}-th Fibonacci number is {}".format(args.n, fib(args.n)))
-    _logger.info("Script ends here")
-
-
-def run():
-    """Entry point for console_scripts
-    """
-    main(sys.argv[1:])
-
-
-if __name__ == "__main__":
+    #sigs = {signal.SIGINT, signal.SIGTERM}
     run()
