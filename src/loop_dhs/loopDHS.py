@@ -38,19 +38,7 @@ __author__ = "Scott Classen"
 __copyright__ = "Scott Classen"
 __license__ = "mit"
 
-_logger = logging.getLogger(__name__)
-
-
-# logging setup
-verboselogs.install()
 _logger = verboselogs.VerboseLogger('loopDHS')
-logdir = 'logs'
-logfile = os.path.join(logdir,Path(__file__).stem + '.log')
-handler = logging.handlers.RotatingFileHandler(logfile, maxBytes=100000, backupCount=5)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-handler.setFormatter(formatter)
-_logger.addHandler(handler)
-
 
 # Mac OS does not like Tkinter (TkAgg backend) so must use QtAgg
 # or just Agg if no GUI is required. i.e. just writing plots out to a png file.
@@ -113,6 +101,10 @@ class LoopDHSConfig(Dotty):
     @property
     def save_image_dir(self):
         return self['loopdhs.save_image_dir']
+
+    @property
+    def log_dir(self):
+        return self['loopdhs.log_dir']
 
 class LoopDHSState():
     """Class to hold DHS state info."""
@@ -180,8 +172,8 @@ def dhs_init(message:DhsInit, context:DhsContext):
     parser.add_argument(
         '--version',
         action='version',
-        version='loopDHS version 0.1')
-        #version='pyDHS {ver}'.format(ver=__version__))
+        #version='loopDHS version 0.1')
+        version='loopDHS version {ver}'.format(ver=__version__))
     parser.add_argument(
         dest='beamline',
         help='Beamline Name (e.g. BL-831 or SIM831). This determines which beamline-specific config file to load from config directory.',
@@ -201,57 +193,7 @@ def dhs_init(message:DhsInit, context:DhsContext):
 
     args = parser.parse_args(message.args)
 
-    # Not sure this is working. arg gets parsed but _logger never changes level. need to 
-    # set a second varable loglevel and pass it to teh coloredlogs installer below.
-    if args.verbosity >= 4:
-        _logger.setLevel(logging.SPAM)
-        loglevel = 5
-    elif args.verbosity >= 3:
-        _logger.setLevel(logging.DEBUG)
-        loglevel = 10
-    elif args.verbosity >= 2:
-        _logger.setLevel(logging.VERBOSE)
-        loglevel = 15
-    elif args.verbosity >= 1:
-        _logger.setLevel(logging.NOTICE)
-        loglevel = 25
-    elif args.verbosity <= 0:
-        _logger.setLevel(logging.WARNING)
-        loglevel = 30
-
-    # By default the install() function installs a handler on the root logger,
-    # this means that log messages from your code and log messages from the
-    # libraries that you use will all show up on the terminal.
-    #coloredlogs.install(level='DEBUG')
-    
-    # If you don't want to see log messages from libraries, you can pass a
-    # specific logger object to the install() function. In this case only log
-    # messages originating from that logger will show up on the terminal.
-    #coloredlogs.install(level='DEBUG', logger=logger)
-
-    coloredlogs.install(level=loglevel,fmt='%(asctime)s,%(msecs)03d %(hostname)s %(name)s[%(funcName)s():%(lineno)d] %(levelname)s %(message)s')
-
-    # LOG LEVELS AVAILABLE IN verboselogs module
-    #  5 SPAM
-    # 10 DEBUG
-    # 15 VERBOSE
-    # 20 INFO
-    # 25 NOTICE
-    # 30 WARNING
-    # 35 SUCCESS
-    # 40 ERROR
-    # 50 CRITICAL
-
-    # EXAMPLES
-    # _logger.spam("this is a spam message")
-    # _logger.debug("this is a debugging message")
-    # _logger.verbose("this is a verbose message")
-    # _logger.info("this is an informational message")
-    # _logger.notice("this is a notice message")
-    # _logger.warning("this is a warning message")
-    # _logger.success("this is a success message")
-    # _logger.error("this is an error message")
-    # _logger.critical("this is a critical message")
+    configure_logging(args.verbosity)
 
     conf_file = 'config/' + args.beamline + '.config'
 
@@ -260,7 +202,7 @@ def dhs_init(message:DhsInit, context:DhsContext):
     _logger.success(f'Start Time: {datetime.now()}')
     loglevel_name = logging.getLevelName(_logger.getEffectiveLevel())
     _logger.success(f'Logging level: {loglevel_name}')
-    _logger.success(f'Log File: {logfile}')
+    #_logger.success(f'Log File: {}')
     _logger.success(f'Config file: {conf_file}')
     with open(conf_file, 'r') as f:
         yconf = yaml.safe_load(f)
@@ -719,6 +661,74 @@ def plot_results(results_dir:str, images:LoopImageSet):
     fn = 'plot_loop_widths.png'
     results_plot = os.path.join(results_dir,fn)
     plt.savefig(results_plot)
+
+def configure_logging(verbosity):
+
+    if verbosity >= 4:
+        _logger.setLevel(logging.SPAM)
+        loglevel = 5
+    elif verbosity >= 3:
+        _logger.setLevel(logging.DEBUG)
+        loglevel = 10
+    elif verbosity >= 2:
+        _logger.setLevel(logging.VERBOSE)
+        loglevel = 15
+    elif verbosity >= 1:
+        _logger.setLevel(logging.NOTICE)
+        loglevel = 25
+    elif verbosity <= 0:
+        _logger.setLevel(logging.WARNING)
+        loglevel = 30
+
+    #verboselogs.install()
+
+    logdir = 'logs'
+
+    if not os.path.exists(logdir):
+        os.makedirs(logdir)
+
+    logfile = os.path.join(logdir,Path(__file__).stem + '.log')
+    handler = logging.handlers.RotatingFileHandler(logfile, maxBytes=100000, backupCount=5)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    handler.setLevel(loglevel)
+    _logger.addHandler(handler)
+
+
+
+    # By default the install() function installs a handler on the root logger,
+    # this means that log messages from your code and log messages from the
+    # libraries that you use will all show up on the terminal.
+    #coloredlogs.install(level='DEBUG')
+    
+    # If you don't want to see log messages from libraries, you can pass a
+    # specific logger object to the install() function. In this case only log
+    # messages originating from that logger will show up on the terminal.
+    #coloredlogs.install(level='DEBUG', logger=logger)
+
+    coloredlogs.install(level=loglevel,fmt='%(asctime)s,%(msecs)03d %(hostname)s %(name)s[%(funcName)s():%(lineno)d] %(levelname)s %(message)s')
+
+    # LOG LEVELS AVAILABLE IN verboselogs module
+    #  5 SPAM
+    # 10 DEBUG
+    # 15 VERBOSE
+    # 20 INFO
+    # 25 NOTICE
+    # 30 WARNING
+    # 35 SUCCESS
+    # 40 ERROR
+    # 50 CRITICAL
+
+    # EXAMPLES
+    # _logger.spam("this is a spam message")
+    # _logger.debug("this is a debugging message")
+    # _logger.verbose("this is a verbose message")
+    # _logger.info("this is an informational message")
+    # _logger.notice("this is a notice message")
+    # _logger.warning("this is a warning message")
+    # _logger.success("this is a success message")
+    # _logger.error("this is an error message")
+    # _logger.critical("this is a critical message")
 
 def run():
     """Entry point for console_scripts."""
