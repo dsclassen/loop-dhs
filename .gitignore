@@ -94,4 +94,6 @@ ENV/
 
 # loopDHS debugging dirs
 JPEGS/
+RESULTS/
 *.tgz
+*.log.*

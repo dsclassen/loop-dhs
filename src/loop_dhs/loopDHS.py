@@ -111,8 +111,8 @@ class LoopDHSConfig(Dotty):
         return self['loopdhs.save_image_files']
 
     @property
-    def jpeg_save_dir(self):
-        return self['loopdhs.image_save_dir']
+    def save_image_dir(self):
+        return self['loopdhs.save_image_dir']
 
 class LoopDHSState():
     """Class to hold DHS state info."""
@@ -142,6 +142,7 @@ class CollectLoopImageState():
         self._loop_images = LoopImageSet()
         self._image_index = 0
         self._automl_responses_received = 0
+        self._results_dir = None
 
     @property
     def loop_images(self):
@@ -162,6 +163,14 @@ class CollectLoopImageState():
     @automl_responses_received.setter
     def automl_responses_received(self, idx:int):
         self._automl_responses_received = idx
+
+    @property
+    def results_dir(self)->str:
+        return self._results_dir
+
+    @results_dir.setter
+    def results_dir(self, dir:str):
+        self._results_dir = dir
 
 @register_message_handler('dhs_init')
 def dhs_init(message:DhsInit, context:DhsContext):
@@ -266,11 +275,10 @@ def dhs_init(message:DhsInit, context:DhsContext):
 
     context.state = LoopDHSState()
 
+
     if context.config.save_images:
-        if not os.path.exists(context.config.jpeg_save_dir):
-            os.makedirs(''.join([context.config.jpeg_save_dir,'bboxes']))
-        else:
-            empty_jpeg_dir(context.config.jpeg_save_dir)
+        if not os.path.exists(context.config.save_image_dir):
+            os.makedirs(context.config.save_image_dir)
 
 @register_message_handler('dhs_start')
 def dhs_start(message:DhsStart, context:DhsContext):
@@ -335,12 +343,31 @@ def collect_loop_images(message:DcssStoHStartOperation, context:DcssContext):
 
     # 1. Instantiate CollectLoopImageState.
     context.get_active_operations(operation_name=message.operation_name, operation_handle=message.operation_handle)[0].state = CollectLoopImageState()
+    opName = message.operation_name
+    opHandle = message.operation_handle
 
     # 2. Set image collection flag.
     context.state.collect_images = True
     
-    # 3. Open the JPRG receiver port.
+    # 3. Open the JPEG receiver port.
     context.get_connection('jpeg_receiver_conn').connect()
+
+    # make a RESULTS directory for this instance of the operation.
+    if context.config.save_images:
+        if os.path.exists(context.config.save_image_dir):
+            opDir = ''.join([opName,opHandle.replace('.','_')])
+            operationResultsDir = os.path.join(context.config.save_image_dir,opDir)
+            boundingBoxDir = os.path.join(operationResultsDir,'bboxes')
+            # how to set results_dir in active op?
+            activeOp = context.get_active_operations(operation_name='collectLoopImages')
+            activeOp[0].state.results_dir = operationResultsDir
+            #
+            os.makedirs(operationResultsDir)
+            os.makedirs(boundingBoxDir)
+            _logger.debug(f'SAVING RAW JPEG IMAGES TO: {operationResultsDir}')
+            _logger.debug(f'SAVING OPENCV ADORNED IMAGES TO: {operationResultsDir}')
+        else:
+            _logger.error('RESULTS FOLDER MISSING')
 
     # 4. Send an operation update message to DCSS to trigger both sample rotation and axis server to send images.
     context.get_connection('dcss_conn').send(DcssHtoSOperationUpdate(message.operation_name, message.operation_handle, "start_oscillation"))
@@ -357,6 +384,7 @@ def get_loop_tip(message:DcssStoHStartOperation, context:DcssContext):
     2. htos_operation_completed getLoopTip operation_handle error TipNotInView +/-
 
     """
+
     _logger.info(f'FROM DCSS: {message}')
     # need to confirm that pinBaseX is the same as PinPos in imgCentering.cc
     #
@@ -371,23 +399,18 @@ def get_loop_info(message:DcssStoHStartOperation, context:DcssContext):
 
     DCSS may send a single arg pinBaseSizeHint, but I think we can ignore it.
     """
+
     _logger.info(f'FROM DCSS: {message}')
     # 1. Request single jpeg image from axis video server. takes camera as arg.
     cam = str(context.config.axis_camera)
     context.get_connection('axis_conn').send(AxisImageRequestMessage(''.join(['camera=',cam])))
-    #    htos_operation_completed getLoopInfo operation_handle error failed to get image
-    # 2. Send to AutoML
-    # 3. Format AutoML results and send info back to DCSS
-    #    on error:
-    #    htos_operation_completed getLoopInfo operation_handle failed <error_message>
-    #    on success:
-    #    htos_operation_completed getLoopInfo operation_handle normal tipX tipY pinBaseX fiberWidth loopWidth boxMinX boxMaxX boxMinY boxMaxY loopWidthX isMicroMount
 
 @register_dcss_start_operation_handler('stopCollectLoopImages')
 def stop_collect_loop_images(message:DcssStoHStartOperation, context:DcssContext):
     """
     This operation should set a global flag to signal collectLoopImages to stop and optionally to shutdown the jpeg receiver.
     """
+
     _logger.info(f'FROM DCSS: {message}')
 
     # 1. Set image collection to False.
@@ -399,34 +422,10 @@ def stop_collect_loop_images(message:DcssStoHStartOperation, context:DcssContext
     # 3. Send operation completed message to DCSS
     context.get_connection('dcss_conn').send(DcssHtoSOperationCompleted(message.operation_name,message.operation_handle,'normal','flag set'))
 
-def write_results(jpeg_dir:str, images:LoopImageSet):
-    """Writes out current contents of the jpeg list"""
-    timestr = time.strftime("%Y%m%d-%H%M%S")
-    fn = ''.join(['results_',timestr,'.txt'])
-    results_file = os.path.join(jpeg_dir,fn)
-    with open(results_file, 'w') as f:
-        for item in images.results:
-            f.write('%s\n' % item)
-
-def plot_results(jpeg_dir:str, images:LoopImageSet):
-    """Makes a simple plot of image index vs loopWidth"""
-    timestr = time.strftime("%Y%m%d-%H%M%S")
-    i = [e[1] for e in images.results]
-    _logger.spam(f'PLOT INDICES: {i}')
-    loopWidths = [e[7] for e in images.results]
-    _logger.spam(f'PLOT LOOP WIDTHS: {loopWidths}')
-    plt.plot(i,loopWidths)
-    plt.xlabel('image index')
-    plt.ylabel('loop width')
-    plt.title(' '.join(['loopWidth',timestr]))
-    fn = ''.join(['plot_loop_widths_',timestr,'.png'])
-    results_plot = os.path.join(jpeg_dir,fn)
-    plt.savefig(results_plot)
-
 @register_dcss_start_operation_handler('reboxLoopImage')
 def rebox_loop_image(message:DcssStoHStartOperation, context:DcssContext):
     """
-    This operation is used to more accurately define the loop bounding box. I'm not sure of it's use with AutoML loop prediction, but it was important for teh original edge detection AI developed at SSRL.
+    This operation is used to more accurately define the loop bounding box. I'm not sure of it's use with AutoML loop prediction, but it was important for the original edge detection AI developed at SSRL.
 
     Parameters:
     index (int): which image we want to inspect
@@ -467,13 +466,15 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
     # ==============================================================
 
     # AutoML results filtering.
-    if message.get_score(0) < 0.50:
+    if message.get_score(0) < 0.10:
         _logger.warning(f'TOP AUTOML SCORE IS BELOW 0.50 THRESHOLD: {message.get_score(0)}')
         status = 'failed'
         result = ['no loop detected, AutoML score: ', message.get_score(0)]
     else:
         status = 'normal'
         result = []
+
+
 
     # for i in range(5):
     #     score = message.get_score(i)
@@ -530,12 +531,12 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
             # Increment AutoML responses received.
             ao.state.automl_responses_received += 1
             received = ao.state.automl_responses_received
-
+            sent = ao.state.image_index
+            #time.sleep(1)
             # Here for creating and sending update messages.
-            if ao.state.automl_responses_received < ao.state.image_index:
-                sent = ao.state.image_index
-                _logger.debug(f'SENT: {sent} RECEIVED: {received}' )
-                index = message.image_key.split(':')[2]
+            if received < sent:
+                _logger.info(f'SENT: {sent} RECEIVED: {received}' )
+                index = int(message.image_key.split(':')[2])
                 # adding extra return fields here may have implications in loopFast.tcl
                 result = ['LOOP_INFO', index, status, tipX, tipY, pinBaseX, fiberWidth, loopWidth, boxMinX, boxMaxX, boxMinY, boxMaxY, loopWidthX, isMicroMount, loopClass, loopScore]
                 msg = ' '.join(map(str,result))
@@ -549,20 +550,22 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
                     lower_right = [message.bb_maxX,message.bb_maxY]
                     tip = [tipX, tipY]
                     _logger.info(f'DRAW BOUNDING BOX FOR IMAGE: {index} UL: {upper_left} LR: {lower_right} TIP: {tip}')
-                    axisfilename = ''.join(['loop_',str(index).zfill(4),'.jpeg'])
-                    file_to_adorn = os.path.join(context.config.jpeg_save_dir, axisfilename)
+                    axisfilename = 'loop_{:04}.jpeg'.format(index)
+                    #file_to_adorn = os.path.join(context.config.save_image_dir, axisfilename)
+                    file_to_adorn = os.path.join(ao.state.results_dir,axisfilename)
+                    output_dir = os.path.join(ao.state.results_dir,'bboxes')
                     if os.path.isfile(file_to_adorn):
-                        draw_bounding_box(file_to_adorn, upper_left, lower_right, tip)
+                        draw_bounding_box(file_to_adorn, upper_left, lower_right, tip, output_dir)
                     else:
                         _logger.warning(f'DID NOT FIND IMAGE: {file_to_adorn}')
 
             # Here for sending the final operation completed message.
-            elif ao.state.automl_responses_received == ao.state.image_index:
-                sent = ao.state.image_index
-                _logger.debug(f'SENT: {sent} RECEIVED: {received}' )
+            # still getting a race condition and we terminate early
+            elif received == sent:
+                _logger.success(f'SENT: {sent} RECEIVED: {received}' )
                 if context.config.save_images:
-                    write_results(context.config.jpeg_save_dir, ao.state.loop_images)
-                    plot_results(context.config.jpeg_save_dir, ao.state.loop_images)
+                    write_results(ao.state.results_dir, ao.state.loop_images)
+                    plot_results(ao.state.results_dir, ao.state.loop_images)
                 context.state.rebox_images = ao.state.loop_images
                 _logger.info('SEND OPERATION COMPLETE TO DCSS')
                 context.get_connection('dcss_conn').send(DcssHtoSOperationCompleted(ao.operation_name, ao.operation_handle,'normal','done'))
@@ -571,7 +574,7 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
             # This would indicate the AutoML is able to keep up with the images being ingested by the JPEG receiver port.
             else:
                 _logger.error('============================================================================')
-                _logger.error(f'SENT: {ao.state.image_index} RECEIVED: {ao.state.automl_responses_received} STATE: {context.state.collect_images}')
+                _logger.error(f'SENT: {sent} RECEIVED: {received} STATE: {context.state.collect_images}')
                 _logger.error('============================================================================')
 
 
@@ -594,13 +597,14 @@ def jpeg_receiver_image_post_request(message:JpegReceiverImagePostRequestMessage
         activeOp = activeOps[0]
         opName = activeOp.operation_name
         opHandle = activeOp.operation_handle
+        resultsDir = activeOp.state.results_dir
         # Store a set of images from the most recent collectLoopImages for subsequent analysis with reboxLoopImage
         _logger.debug(f'ADD {len(message.file)} BYTE IMAGE TO JPEG LIST')
         activeOp.state.loop_images.add_image(message.file)
 
         image_key = ':'.join([opName,opHandle,str(activeOp.state.image_index)])
         if context.config.save_images:
-            save_jpeg(message.file, activeOp.state.image_index)
+            save_jpeg(message.file, activeOp.state.image_index, resultsDir)
         context.get_connection('automl_conn').send(AutoMLPredictRequest(image_key, message.file))
         activeOp.state.image_index += 1
     else:
@@ -612,13 +616,11 @@ def axis_image_response(message:AxisImageResponseMessage, context:DhsContext):
     This message handler will be used for both getLoopTip and getLoopInfo operations
     It will process a single JPEG image received from an AXIS video server.
     """
+
     _logger.debug(f'RECEIVED {message.file_length} BYTE IMAGE FROM AXIS VIDEO SERVER.')
     activeOps = context.get_active_operations()
     for ao in activeOps:
         if ao.operation_name == 'getLoopTip' or 'getLoopInfo':
-            #activeOps = context.get_active_operations(operation_name='getLoopTip')
-            #if len(activeOps) > 0:
-            #activeOp = activeOps[0]
             opName = ao.operation_name
             opHandle = ao.operation_handle
             image_key = ':'.join([opName,opHandle])
@@ -626,34 +628,36 @@ def axis_image_response(message:AxisImageResponseMessage, context:DhsContext):
         else:
             _logger.warning(f'RECEVIED JPEG, BUT NOT DOING ANYTHING WITH IT.')
 
-def save_jpeg(image:bytes, index:int=None):
+def save_jpeg(image:bytes, index:int=None, save_dir:str=None):
     """
     Save an image to the specified directory, and increment the number.
-    e.g. if file_0001.txt exists then teh next file will be file_0002.txt
+    e.g. if loop_0001.jpeg exists then the next file will be loop_0002.jpeg
     """
-    newNum = index
-    if newNum is None:
-        currentImages = glob.glob("JPEGS/*.jpeg")
-        numList = [0]
-        for img in currentImages:
+
+    new_num = index
+    if new_num is None:
+        current_images = glob.glob(''.join([save_dir,'/*.jpeg']))
+        num_list = [0]
+        for img in current_images:
             i = os.path.splitext(img)[0]
             try:
                 num = re.findall('[0-9]+$', i)[0]
-                numList.append(int(num))
+                num_list.append(int(num))
             except IndexError:
                 pass
-        numList = sorted(numList)
-        newNum = numList[-1]+1
+        num_list = sorted(num_list)
+        new_num = num_list[-1]+1
 
-    saveName = 'JPEGS/loop_%04d.jpeg' % newNum
+    save_name = '{}/loop_{:04}.jpeg'.format(save_dir,new_num)
 
-    f = open(saveName, 'w+b')
+    f = open(save_name, 'w+b')
     f.write(image)
     f.close()
-    _logger.info(f'SAVED JPEG IMAGE FILE: {saveName}')
+    _logger.info(f'SAVED JPEG IMAGE FILE: {save_name}')
 
-def draw_bounding_box(file_to_adorn:str, upper_left_corner:list, lower_right_corner:list, tip:list):
-    """Use OpenCV to draw a bounding box on a jpeg"""
+def draw_bounding_box(file_to_adorn:str, upper_left_corner:list, lower_right_corner:list, tip:list, output_dir:str):
+    """Use OpenCV to draw a bounding box and loop tip crosshair on a jpeg image."""
+
     image = cv2.imread(file_to_adorn)
     s = tuple(image.shape[1::-1])
     w = s[0]
@@ -671,42 +675,58 @@ def draw_bounding_box(file_to_adorn:str, upper_left_corner:list, lower_right_cor
     end_point = (math.ceil(lower_right_corner[0] * w), math.ceil(lower_right_corner[1] * h))
     #_logger.info(f'END: {end_point}')
 
-    # Red color in BGR 
-    color = (0, 0, 255)
-    xhair_color = (0, 255, 0)
+    # Color in BGR 
+    red = (0, 0, 255)
+    green = (0, 255, 0)
 
     # Line thickness of 1 px 
     thickness = 1
 
-    image = cv2.rectangle(image, start_point, end_point, color, thickness)
-    cross_hair_horz = [(tipX - crosshair_size, tipY),(tipX + crosshair_size, tipY)]
-    cross_hair_vert = [(tipX, tipY - crosshair_size),(tipX, tipY + crosshair_size)]
-    image = cv2.line(image,cross_hair_horz[0],cross_hair_horz[1],xhair_color,thickness)
-    image = cv2.line(image,cross_hair_vert[0],cross_hair_vert[1],xhair_color,thickness)
+    image = cv2.rectangle(image, start_point, end_point, red, thickness)
+    cross_hair_horz = [(tipX - crosshair_size, tipY), (tipX + crosshair_size, tipY)]
+    cross_hair_vert = [(tipX, tipY - crosshair_size), (tipX, tipY + crosshair_size)]
+    image = cv2.line(image,cross_hair_horz[0], cross_hair_horz[1], green, thickness)
+    image = cv2.line(image,cross_hair_vert[0], cross_hair_vert[1], green, thickness)
 
-    outfn = "automl_" + os.path.basename(file_to_adorn)
-    outdir = os.path.dirname(file_to_adorn)
-    outfile = os.path.join(outdir,"bboxes",outfn)
-    _logger.info(f'DREW BOUNDING BOX: {outfile}')
+    output_filename = 'automl_' + os.path.basename(file_to_adorn)
+    outfile = os.path.join(output_dir, output_filename)
+    cv2.imwrite(outfile, image)
+    _logger.info(f'OPENCV DREW BOUNDING BOX: {outfile}')
 
-    cv2.imwrite(outfile,image)
+def write_results(results_dir:str, images:LoopImageSet):
+    """Writes out current contents of the jpeg list."""
 
-def empty_jpeg_dir(directory:str):
+    #timestr = time.strftime("%Y%m%d-%H%M%S")
+    fn = 'results.txt'
+    results_file = os.path.join(results_dir,fn)
+    with open(results_file, 'w') as f:
+        for item in images.results:
+            f.write('%s\n' % item)
 
-    files = glob.glob(''.join([directory,'*.jpeg']))
-    for f in files:
-        os.remove(f)
-    files = glob.glob(''.join([directory,'bboxes/*.jpeg']))
-    for f in files:
-        os.remove(f)
+def plot_results(results_dir:str, images:LoopImageSet):
+    """Makes a simple plot of image index vs loopWidth."""
+
+    timestr = time.strftime("%Y%m%d-%H%M%S")
+    i = [e[1] for e in images.results]
+    _logger.spam(f'PLOT INDICES: {i}')
+    loop_widths = [e[7] for e in images.results]
+    _logger.spam(f'PLOT LOOP WIDTHS: {loop_widths}')
+    plt.plot(i,loop_widths)
+    plt.xlabel('image index')
+    plt.ylabel('loop width')
+    plt.title(' '.join(['loopWidth',timestr]))
+    #fn = ''.join(['plot_loop_widths_',timestr,'.png'])
+    fn = 'plot_loop_widths.png'
+    results_plot = os.path.join(results_dir,fn)
+    plt.savefig(results_plot)
 
 def run():
-    """Entry point for console_scripts"""
-    #print(sys.argv)
+    """Entry point for console_scripts."""
+
     main(sys.argv[1:])
 
 def main(args):
-    """Main entry point for allowing external calls"""
+    """Main entry point for allowing external calls."""
 
     dhs = Dhs()
     dhs.start()
@@ -715,5 +735,4 @@ def main(args):
     dhs.wait(sigs)
 
 if __name__ == '__main__':
-    #sigs = {signal.SIGINT, signal.SIGTERM}
     run()
