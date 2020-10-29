@@ -654,7 +654,7 @@ def plot_results(results_dir:str, images:LoopImageSet):
     indices = [e[1] for e in images.results]
     _logger.spam(f'PLOT INDICES: {indices}')
     _y_data = [e[7] for e in images.results]
-    _logger.spam(f'PLOT LOOP WIDTHS: {loop_widths}')
+    _logger.spam(f'PLOT LOOP WIDTHS: {_y_data}')
 
     _x_data = []
 
