@@ -731,7 +731,7 @@ def plot_results(results_dir:str, images:LoopImageSet):
         axes = f.add_subplot(111)
 
         # first the raw data as a scatter plot
-        axes.scatter(x_data, y_data, color='black', marker='o', markersize=12, label='data')
+        axes.scatter(x_data, y_data, color='black', marker='o', label='data')
 
         # create data for the fitted equation plot
         x_model = np.linspace(min(x_data), max(x_data))
