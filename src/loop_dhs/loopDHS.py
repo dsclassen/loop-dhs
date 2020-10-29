@@ -8,6 +8,7 @@ import platform
 import logging
 from logging.handlers import RotatingFileHandler
 import coloredlogs
+import numpy as np
 import verboselogs
 import signal
 import sys
@@ -20,6 +21,7 @@ import cv2
 import math
 import matplotlib
 from matplotlib import pyplot as plt
+from scipy import optimize
 from dotty_dict.dotty_dict import Dotty
 from dotty_dict import dotty as dot
 from datetime import datetime
@@ -653,11 +655,21 @@ def plot_results(results_dir:str, images:LoopImageSet):
     _logger.spam(f'PLOT INDICES: {i}')
     loop_widths = [e[7] for e in images.results]
     _logger.spam(f'PLOT LOOP WIDTHS: {loop_widths}')
-    plt.plot(i,loop_widths)
+    #plt.plot(i,loop_widths)
+
+    # fit to sine
+    def test_func(x, a, b):
+        return a * np.sin(b * x)
+    params, params_covariance = optimize.curve_fit(test_func, i, loop_widths, p0=[2, 2])
+
+    plt.scatter(i, loop_widths, label='data')
+    plt.plot(i, test_func(i,params[0], params[1]), label='fit')
     plt.xlabel('image index')
     plt.ylabel('loop width')
     plt.title(' '.join(['loopWidth',timestr]))
-    #fn = ''.join(['plot_loop_widths_',timestr,'.png'])
+    plt.legend(loc='best')
+
+
     fn = 'plot_loop_widths.png'
     results_plot = os.path.join(results_dir,fn)
     plt.savefig(results_plot)
