@@ -676,7 +676,7 @@ def plot_results(results_dir:str, images:LoopImageSet):
 
     plt.scatter(x_data, y_data, label='data')
     plt.plot(x_data, fit_sin_func(x_data, params[0], params[1]), label='fit')
-    plt.xlabel('image index')
+    plt.xlabel('image phi')
     plt.ylabel('loop width')
     plt.title(' '.join(['loopWidth',timestr]))
     plt.legend(loc='best')
