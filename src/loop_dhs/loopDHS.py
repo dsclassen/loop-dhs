@@ -21,7 +21,7 @@ import cv2
 import math
 import matplotlib
 from matplotlib import pyplot as plt
-from scipy.optimize import curve_fit
+from scipy.optimize import curve_fit, minimize_scalar
 from scipy.optimize import differential_evolution
 import warnings
 from dotty_dict.dotty_dict import Dotty
@@ -731,14 +731,28 @@ def plot_results(results_dir:str, images:LoopImageSet):
         axes = f.add_subplot(111)
 
         # first the raw data as a scatter plot
-        axes.scatter(x_data, y_data, c='green', label='data')
+        axes.scatter(x_data, y_data, color='green', label='data')
 
         # create data for the fitted equation plot
         x_model = np.linspace(min(x_data), max(x_data))
         y_model = func(x_model, *fitted_parameters)
 
         # now the model as a line plot
-        axes.plot(x_model, y_model, c='red', label='fit')
+        axes.plot(x_model, y_model, color='red', label='fit')
+
+        # max
+        fm = lambda xData: -func(xData, *fitted_parameters)
+        res = minimize_scalar(fm, bounds=(0,480))
+        #print(f'res.x: {res.x}')
+        _logger.info(f'LOOP MAX (FACE): {math.degrees(res.x)}')
+        axes.plot(res.x, func(res.x, *fitted_parameters), color='green', marker='o', linestyle='dashed', linewidth=2, markersize=22)
+
+        # min
+        fm = lambda xData: func(xData, *fitted_parameters)
+        res = minimize_scalar(fm, bounds=(0,480))
+        #print(f'res.x: {res.x}')
+        _logger.info(f'LOOP MIN (EDGE): {math.degrees(res.x)}')
+        axes.plot(res.x, func(res.x, *fitted_parameters), color='m', marker='o', linestyle='dashed', linewidth=4, markersize=22)
 
         axes.set_xlabel('Image Phi Position (rad)') # X axis data label
         axes.set_ylabel('Loop Width (px)') # Y axis data label
