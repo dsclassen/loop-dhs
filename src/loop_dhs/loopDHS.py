@@ -655,8 +655,8 @@ def plot_results(results_dir:str, images:LoopImageSet):
     timestr = time.strftime("%Y%m%d-%H%M%S")
     indices = [e[1] for e in images.results]
     _logger.spam(f'PLOT INDICES: {indices}')
-    _y_data = [e[7] for e in images.results]
-    _logger.spam(f'PLOT LOOP WIDTHS: {_y_data}')
+    _loop_widths = [e[7] for e in images.results]
+    _logger.spam(f'PLOT LOOP WIDTHS: {_loop_widths}')
 
     _x_data = []
     _y_data = []
@@ -666,6 +666,11 @@ def plot_results(results_dir:str, images:LoopImageSet):
         angle = index * 2
         rad = math.radians(angle)
         _x_data.append(rad)
+
+    # try converting loopWidth from fractional to pixel coordinates
+    for width in _loop_widths:
+        w = 480 * width
+        _y_data.append(w)
 
     # convert python lists to numpy arrays
     x_data = np.array(_x_data) 
