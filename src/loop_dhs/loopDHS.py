@@ -21,7 +21,9 @@ import cv2
 import math
 import matplotlib
 from matplotlib import pyplot as plt
-from scipy import optimize
+from scipy.optimize import curve_fit
+from scipy.optimize import differential_evolution
+import warnings
 from dotty_dict.dotty_dict import Dotty
 from dotty_dict import dotty as dot
 from datetime import datetime
@@ -657,6 +659,7 @@ def plot_results(results_dir:str, images:LoopImageSet):
     _logger.spam(f'PLOT LOOP WIDTHS: {_y_data}')
 
     _x_data = []
+    _y_data = []
 
     # images are 2 degrees apart and must be converted to radians
     for index in indices:
@@ -668,9 +671,93 @@ def plot_results(results_dir:str, images:LoopImageSet):
     x_data = np.array(_x_data) 
     y_data = np.array(_y_data)
 
+    #sine wave with offset
+    def func (x, amplitude, center, width, offset):
+        return amplitude * np.sin(np.pi * (x - center) / width) + offset
+
+    # function for genetic algorithm to minimize (sum of squared error)
+    def sum_of_squared_error(parameter_tuple):
+        warnings.filterwarnings("ignore") # do not print warnings by genetic algorithm
+        val = func(x_data, *parameter_tuple)
+        return np.sum((y_data - val) ** 2.0)
+
+    def generate_initial_parameters():
+        # min and max used for bounds
+        maxX = max(x_data)
+        minX = min(x_data)
+        maxY = max(y_data)
+        minY = min(y_data)
+
+        diffY = maxY - minY
+        diffX = maxX - minX
+
+        parameter_bounds = []
+        parameter_bounds.append([0.0, diffY]) # search bounds for amplitude
+        parameter_bounds.append([minX, maxX]) # search bounds for center
+        parameter_bounds.append([0.0, diffX]) # search bounds for width
+        parameter_bounds.append([minY, maxY]) # search bounds for offset
+
+        # "seed" the np random number generator for repeatable results
+        result = differential_evolution(sum_of_squared_error, parameter_bounds, seed=3)
+        return result.x
+
+    # by default, differential_evolution completes by calling curve_fit() using parameter bounds
+    genetic_parameters = generate_initial_parameters()
+
+    # now call curve_fit without passing bounds from the genetic algorithm,
+    # just in case the best fit parameters are aoutside those bounds
+    fitted_parameters, pcov = curve_fit(func, x_data, y_data, genetic_parameters)
+    _logger.debug(f'Fitted parameters: {fitted_parameters}')
+ 
+    model_predictions = func(x_data, *fitted_parameters) 
+
+    abs_error = model_predictions - y_data
+
+    SE = np.square(abs_error) # squared errors
+    MSE = np.mean(SE) # mean squared errors
+    RMSE = np.sqrt(MSE) # Root Mean Squared Error, RMSE
+    Rsquared = 1.0 - (np.var(abs_error) / np.var(y_data))
+
+    _logger.debug(f'RMSE: {RMSE}')
+    _logger.debug(f'R-squared: {Rsquared}')
+
+    def model_and_scatter_plot(graph_width, graph_height):
+        f = plt.figure(figsize=(graph_width/100.0, graph_height/100.0), dpi=100)
+        axes = f.add_subplot(111)
+
+        # first the raw data as a scatter plot
+        axes.scatter(x_data, y_data, c='green', label='data')
+
+        # create data for the fitted equation plot
+        x_model = np.linspace(min(x_data), max(x_data))
+        y_model = func(x_model, *fitted_parameters)
+
+        # now the model as a line plot
+        axes.plot(x_model, y_model, c='red', label='fit')
+
+        axes.set_xlabel('Image Phi Position (rad)') # X axis data label
+        axes.set_ylabel('Loop Width (px)') # Y axis data label
+        axes.legend(loc='best')
+
+        fn = 'plot_loop_widths.png'
+
+        f.savefig(fn)
+
+    graph_width = 800
+    graph_height = 600
+    model_and_scatter_plot(graph_width, graph_height)
+
+
+
+
+
+
+
+
+
     # fit to sine
-    def fit_sin_func(x, a, b):
-        return a * np.sin(b * x)
+    def fit_sin_func(x, a, b, c):
+        return a * np.sin(b * x) + c
 
     params, params_covariance = optimize.curve_fit(fit_sin_func, x_data, y_data, p0=[0.2, 2.9])
 
