@@ -745,8 +745,8 @@ def plot_results(results_dir:str, images:LoopImageSet):
         axes.legend(loc='best')
 
         fn = 'plot_loop_widths.png'
-
-        f.savefig(fn)
+        results_plot = os.path.join(results_dir,fn)
+        f.savefig(results_plot)
 
     graph_width = 800
     graph_height = 600
