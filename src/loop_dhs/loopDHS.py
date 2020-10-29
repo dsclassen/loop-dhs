@@ -651,19 +651,31 @@ def plot_results(results_dir:str, images:LoopImageSet):
     """Makes a simple plot of image index vs loopWidth."""
 
     timestr = time.strftime("%Y%m%d-%H%M%S")
-    i = [e[1] for e in images.results]
-    _logger.spam(f'PLOT INDICES: {i}')
-    loop_widths = [e[7] for e in images.results]
+    indices = [e[1] for e in images.results]
+    _logger.spam(f'PLOT INDICES: {indices}')
+    _y_data = [e[7] for e in images.results]
     _logger.spam(f'PLOT LOOP WIDTHS: {loop_widths}')
-    #plt.plot(i,loop_widths)
+
+    _x_data = []
+
+    # images are 2 degrees apart and must be converted to radians
+    for index in indices:
+        angle = index * 2
+        rad = math.radians(angle)
+        _x_data.append(rad)
+
+    # convert python lists to numpy arrays
+    x_data = np.array(_x_data) 
+    y_data = np.array(_y_data)
 
     # fit to sine
-    def test_func(x, a, b):
+    def fit_sin_func(x, a, b):
         return a * np.sin(b * x)
-    params, params_covariance = optimize.curve_fit(test_func, i, loop_widths, p0=[2, 2])
 
-    plt.scatter(i, loop_widths, label='data')
-    plt.plot(i, test_func(i,params[0], params[1]), label='fit')
+    params, params_covariance = optimize.curve_fit(fit_sin_func, x_data, y_data, p0=[0.2, 2.9])
+
+    plt.scatter(x_data, y_data, label='data')
+    plt.plot(x_data, fit_sin_func(x_data, params[0], params[1]), label='fit')
     plt.xlabel('image index')
     plt.ylabel('loop width')
     plt.title(' '.join(['loopWidth',timestr]))
