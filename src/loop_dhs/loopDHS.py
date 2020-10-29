@@ -731,7 +731,7 @@ def plot_results(results_dir:str, images:LoopImageSet):
         axes = f.add_subplot(111)
 
         # first the raw data as a scatter plot
-        axes.scatter(x_data, y_data, color='green', label='data')
+        axes.scatter(x_data, y_data, color='black', marker='o', markersize=12, label='data')
 
         # create data for the fitted equation plot
         x_model = np.linspace(min(x_data), max(x_data))
@@ -758,9 +758,9 @@ def plot_results(results_dir:str, images:LoopImageSet):
         #print(f'res.x: {res.x}')
         _logger.info(f'LOOP MIN (EDGE): {math.degrees(res.x)}')
         axes.plot(res.x, func(res.x, *fitted_parameters), color='m', marker='o', markersize=22)
-        max_x = str(round(res.x,3))
-        max_y = str(round(res.fun,3))
-        coord_label = ''.join(['EDGE: Phi = ', max_y, '$^\circ$'])
+        min_x = str(round(res.x,3))
+        min_y = str(round(res.fun,3))
+        coord_label = ''.join(['EDGE: Phi = ', min_y, '$^\circ$'])
         props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
         axes.annotate(coord_label,(res.x-0.2,-res.fun-0.2), fontsize=14, bbox=props)
 
