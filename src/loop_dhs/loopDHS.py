@@ -752,32 +752,6 @@ def plot_results(results_dir:str, images:LoopImageSet):
     graph_height = 600
     model_and_scatter_plot(graph_width, graph_height)
 
-
-
-
-
-
-
-
-
-    # fit to sine
-    def fit_sin_func(x, a, b, c):
-        return a * np.sin(b * x) + c
-
-    params, params_covariance = optimize.curve_fit(fit_sin_func, x_data, y_data, p0=[0.2, 2.9])
-
-    plt.scatter(x_data, y_data, label='data')
-    plt.plot(x_data, fit_sin_func(x_data, params[0], params[1]), label='fit')
-    plt.xlabel('image phi')
-    plt.ylabel('loop width')
-    plt.title(' '.join(['loopWidth',timestr]))
-    plt.legend(loc='best')
-
-
-    fn = 'plot_loop_widths.png'
-    results_plot = os.path.join(results_dir,fn)
-    plt.savefig(results_plot)
-
 def configure_logging(verbosity):
 
     if verbosity >= 4:
