@@ -494,7 +494,7 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
                 _logger.success(f'SENT: {sent} RECEIVED: {received}' )
                 if context.config.save_images:
                     save_loop_info(ao.state.results_dir, ao.state.loop_images)
-                    plot_results(ao.state.results_dir, ao.state.loop_images)
+                    plot_loop_widths(ao.state.results_dir, ao.state.loop_images)
                 context.state.rebox_images = ao.state.loop_images
                 _logger.info('SEND OPERATION COMPLETE TO DCSS')
                 context.get_connection('dcss_conn').send(DcssHtoSOperationCompleted(ao.operation_name, ao.operation_handle,'normal','done'))
@@ -619,15 +619,19 @@ def save_loop_info(results_dir:str, images:LoopImageSet):
         for row in images.results:
             writer.writerow(row)
 
-def plot_results(results_dir:str, images:LoopImageSet):
-    """Makes a simple plot of image vs loopWidth."""
-
-    timestr = time.strftime("%Y%m%d-%H%M%S")
+def plot_loop_widths(results_dir:str, images:LoopImageSet):
+    """
+    Plot of image vs loopWidth.
+    
+    The curve fitting code is adapted from James Phillips.
+    Here is a  Python fitter with a sine equation and your data using the scipy.optimize Differential Evolution genetic algorithm module to determine initial parameter estimates for curve_fit's non-linear solver. 
+    https://stackoverflow.com/a/58478075/3023774
+    """
     indices = [e[1] for e in images.results]
     _logger.spam(f'PLOT INDICES: {indices}')
     _loop_widths = [e[7] for e in images.results]
     _logger.spam(f'PLOT LOOP WIDTHS: {_loop_widths}')
-
+    # empty list to store x y data
     _x_data = []
     _y_data = []
 
@@ -637,7 +641,7 @@ def plot_results(results_dir:str, images:LoopImageSet):
         rad = math.radians(angle)
         _x_data.append(rad)
 
-    # try converting loopWidth from fractional to pixel coordinates
+    # convert loopWidth from fractional to pixel coordinates
     for width in _loop_widths:
         w = 480 * width
         _y_data.append(w)
@@ -646,7 +650,7 @@ def plot_results(results_dir:str, images:LoopImageSet):
     x_data = np.array(_x_data) 
     y_data = np.array(_y_data)
 
-    #sine wave with offset
+    # sine wave with amplitude, center, width, and offset
     def func (x, amplitude, center, width, offset):
         return amplitude * np.sin(np.pi * (x - center) / width) + offset
 
@@ -656,6 +660,7 @@ def plot_results(results_dir:str, images:LoopImageSet):
         val = func(x_data, *parameter_tuple)
         return np.sum((y_data - val) ** 2.0)
 
+    # reasonable initial values are needed for a stable curve fit
     def generate_initial_parameters():
         # min and max used for bounds
         maxX = max(x_data)
@@ -673,16 +678,17 @@ def plot_results(results_dir:str, images:LoopImageSet):
         parameter_bounds.append([minY, maxY]) # search bounds for offset
 
         # "seed" the np random number generator for repeatable results
-        result = differential_evolution(sum_of_squared_error, parameter_bounds, seed=3)
+        result = differential_evolution(sum_of_squared_error, parameter_bounds, seed=42)
         return result.x
 
     # by default, differential_evolution completes by calling curve_fit() using parameter bounds
     genetic_parameters = generate_initial_parameters()
+    _logger.debug(f'DIFFERENTIAL EVOLUTION: {genetic_parameters}')
 
     # now call curve_fit without passing bounds from the genetic algorithm,
-    # just in case the best fit parameters are aoutside those bounds
+    # just in case the best fit parameters are outside those bounds
     fitted_parameters, pcov = curve_fit(func, x_data, y_data, genetic_parameters)
-    _logger.debug(f'Fitted parameters: {fitted_parameters}')
+    _logger.debug(f'FITTED PARAMETERS: {fitted_parameters}')
  
     model_predictions = func(x_data, *fitted_parameters) 
 
@@ -691,10 +697,10 @@ def plot_results(results_dir:str, images:LoopImageSet):
     SE = np.square(abs_error) # squared errors
     MSE = np.mean(SE) # mean squared errors
     RMSE = np.sqrt(MSE) # Root Mean Squared Error, RMSE
-    Rsquared = 1.0 - (np.var(abs_error) / np.var(y_data))
+    r_squared = 1.0 - (np.var(abs_error) / np.var(y_data))
 
     _logger.debug(f'RMSE: {RMSE}')
-    _logger.debug(f'R-squared: {Rsquared}')
+    _logger.debug(f'R-SQUARED: {r_squared}')
 
     def model_and_scatter_plot(graph_width, graph_height):
         f = plt.figure(figsize=(graph_width/100.0, graph_height/100.0), dpi=100)
