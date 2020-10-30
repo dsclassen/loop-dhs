@@ -730,7 +730,7 @@ def plot_results(results_dir:str, images:LoopImageSet):
         f = plt.figure(figsize=(graph_width/100.0, graph_height/100.0), dpi=100)
         axes = f.add_subplot(111)
 
-        # first the raw data as a scatter plot
+        # raw data as a scatter plot
         axes.scatter(x_data, y_data, color='black', marker='o', label='data')
 
         # create data for the fitted equation plot
@@ -740,22 +740,22 @@ def plot_results(results_dir:str, images:LoopImageSet):
         # now the model as a line plot
         axes.plot(x_model, y_model, color='red', label='fit')
 
-        # max
+        # calculate the phi value for the max (face view) 
         fm = lambda xData: -func(xData, *fitted_parameters)
-        res = minimize_scalar(fm, bounds=(0,480))
+        res = minimize_scalar(fm, bounds=(0,8))
         _logger.info(f'LOOP MAX (FACE): {math.degrees(res.x)}')
-        axes.plot(res.x, func(res.x, *fitted_parameters), color='green', marker='o', markersize=22)
+        axes.plot(res.x, func(res.x, *fitted_parameters), color='green', marker='o', markersize=18)
         max_x = str(round(math.degrees(res.x),3))
         #max_y = str(round(-res.fun,3))
         face_label = ''.join(['FACE: Phi = ', max_x, '$^\circ$'])
         props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
         axes.annotate(face_label,(res.x+0.2,-res.fun), fontsize=14, bbox=props)
 
-        # min
+        # calculate the phi value for the min (edge view) 
         fm = lambda xData: func(xData, *fitted_parameters)
-        res = minimize_scalar(fm, bounds=(0,480))
+        res = minimize_scalar(fm, bounds=(0,8))
         _logger.info(f'LOOP MIN (EDGE): {math.degrees(res.x)}')
-        axes.plot(res.x, func(res.x, *fitted_parameters), color='m', marker='o', markersize=22)
+        axes.plot(res.x, func(res.x, *fitted_parameters), color='magenta', marker='o', markersize=18)
         min_x = str(round(math.degrees(res.x),2))
         #min_y = str(round(res.fun,2))
         edge_label = ''.join(['EDGE: Phi = ', min_x, '$^\circ$'])
