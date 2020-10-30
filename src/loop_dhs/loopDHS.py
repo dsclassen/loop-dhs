@@ -614,6 +614,8 @@ def save_loop_info(results_dir:str, images:LoopImageSet):
     results_file = os.path.join(results_dir,fn)
     with open(results_file, 'w', newline='') as f:
         writer = csv.writer(f, delimiter=',')
+        header = ['LOOP_INFO', 'index', 'status', 'tipX', 'tipY', 'pinBaseX', 'fiberWidth', 'loopWidth', 'boxMinX', 'boxMaxX', 'boxMinY', 'boxMaxY', 'loopWidthX', 'isMicroMount', 'loopClass', 'loopScore']
+        writer.writerow(header)
         for row in images.results:
             writer.writerow(row)
 
@@ -743,6 +745,8 @@ def plot_results(results_dir:str, images:LoopImageSet):
     model_and_scatter_plot(graph_width, graph_height)
 
 def configure_logging(verbosity):
+
+    loglevel = 20
 
     if verbosity >= 4:
         _logger.setLevel(logging.SPAM)
