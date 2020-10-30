@@ -2,13 +2,11 @@
 """
 loopDHS
 """
-
 import os
 import platform
 import logging
 from logging.handlers import RotatingFileHandler
 import coloredlogs
-import numpy as np
 import verboselogs
 import signal
 import sys
@@ -19,10 +17,12 @@ import glob
 import re
 import cv2
 import math
+import csv
 import matplotlib
 from matplotlib import pyplot as plt
 from scipy.optimize import curve_fit, minimize_scalar
 from scipy.optimize import differential_evolution
+import numpy as np
 import warnings
 from dotty_dict.dotty_dict import Dotty
 from dotty_dict import dotty as dot
@@ -74,7 +74,7 @@ class LoopImageSet():
         return self._number_of_images
 
 class LoopDHSConfig(Dotty):
-    """Class to wrap DHS configuration stuff."""
+    """Class to wrap DHS configuration settings."""
     def __init__(self, conf_dict:dict):
         super().__init__(conf_dict)
 
@@ -109,6 +109,10 @@ class LoopDHSConfig(Dotty):
     @property
     def log_dir(self):
         return self['loopdhs.log_dir']
+
+    @property
+    def automl_thhreshold(self):
+        return self['loopdhs.automl.threshold']
 
 class LoopDHSState():
     """Class to hold DHS state info."""
@@ -170,7 +174,7 @@ class CollectLoopImageState():
 
 @register_message_handler('dhs_init')
 def dhs_init(message:DhsInit, context:DhsContext):
-
+    """DHS initialization handler function."""
     parser = message.parser
 
     parser.add_argument(
@@ -197,21 +201,28 @@ def dhs_init(message:DhsInit, context:DhsContext):
 
     args = parser.parse_args(message.args)
 
-    configure_logging(args.verbosity)
+    logfile = configure_logging(args.verbosity)
 
     conf_file = 'config/' + args.beamline + '.config'
-
-    _logger.success('=============================================')
-    _logger.success(f'Initializing DHS')
-    _logger.success(f'Start Time: {datetime.now()}')
-    loglevel_name = logging.getLevelName(_logger.getEffectiveLevel())
-    _logger.success(f'Logging level: {loglevel_name}')
-    #_logger.success(f'Log File: {}')
-    _logger.success(f'Config file: {conf_file}')
     with open(conf_file, 'r') as f:
         yconf = yaml.safe_load(f)
         context.config = LoopDHSConfig(yconf)
     context.config['DHS'] = args.dhs_name
+
+    loglevel_name = logging.getLevelName(_logger.getEffectiveLevel())
+
+    context.state = LoopDHSState()
+
+    if context.config.save_images:
+        if not os.path.exists(context.config.save_image_dir):
+            os.makedirs(context.config.save_image_dir)
+
+    _logger.success('=============================================')
+    _logger.success(f'Initializing DHS')
+    _logger.success(f'Start Time: {datetime.now()}')
+    _logger.success(f'Logging level: {loglevel_name}')
+    _logger.success(f'Log File: {logfile}')
+    _logger.success(f'Config file: {conf_file}')
     _logger.success(f'Initializing: {context.config["DHS"]}')
     _logger.success(f'DCSS HOST: {context.config["dcss.host"]} PORT: {context.config["dcss.port"]}')
     _logger.success(f'AUTOML HOST: {context.config["loopdhs.automl.host"]} PORT: {context.config["loopdhs.automl.port"]}')
@@ -219,16 +230,9 @@ def dhs_init(message:DhsInit, context:DhsContext):
     _logger.success(f'AXIS HOST: {context.config["loopdhs.axis.host"]} PORT: {context.config["loopdhs.axis.port"]}')
     _logger.success('=============================================')
 
-    context.state = LoopDHSState()
-
-
-    if context.config.save_images:
-        if not os.path.exists(context.config.save_image_dir):
-            os.makedirs(context.config.save_image_dir)
-
 @register_message_handler('dhs_start')
 def dhs_start(message:DhsStart, context:DhsContext):
-
+    """DHS start handler"""
     # Connect to DCSS
     context.create_connection('dcss_conn', 'dcss', context.config.dcss_url)
     context.get_connection('dcss_conn').connect()
@@ -241,35 +245,36 @@ def dhs_start(message:DhsStart, context:DhsContext):
     context.create_connection('axis_conn', 'axis', context.config.axis_url)
     context.get_connection('axis_conn').connect()
 
-    # Open a jpeg receiving port. Not sure this needs to be open all the time.
-    # but Giles suggests that this is safe because unexpected data arriving on jpeg_receiver_url
-    # will be ignored if there is no activeOp to deal with it.
+    # Create a jpeg receiving port. Only connect when ready to receive images.
     context.create_connection('jpeg_receiver_conn', 'jpeg_receiver', context.config.jpeg_receiver_url)
     #context.get_connection('jpeg_receiver_conn').connect()
 
 @register_message_handler('stoc_send_client_type')
 def dcss_send_client_type(message:DcssStoCSendClientType, context:Context):
+    """Send client type to DCSS during initial handshake."""
     context.get_connection('dcss_conn').send(DcssHtoSClientIsHardware(context.config['DHS']))
 
 @register_message_handler('stoh_register_operation')
 def dcss_reg_operation(message:DcssStoHRegisterOperation, context:Context):
-    _logger.info(f'REGISTER: {message}')
+    """Register the operations that DCSS has assigned to thsi DHS."""
+    # Need to deal with unimplemented operations
+    _logger.success(f'REGISTER: {message}')
 
 @register_message_handler('stoh_start_operation')
 def dcss_start_operation(message:DcssStoHStartOperation, context:Context):
+    """Handle incoming requests to start an operation."""
     _logger.info(f"FROM DCSS: {message}")
     op = message.operation_name
     opid = message.operation_handle
-    _logger.info(f"OPERATION: {op}, HANDLE: {opid}")
+    _logger.debug(f"OPERATION: {op}, HANDLE: {opid}")
 
-@register_dcss_start_operation_handler('predictOne')
+@register_dcss_start_operation_handler('testAutoML')
 def predict_one(message:DcssStoHStartOperation, context:DcssContext):
     """
     The operation is for testing AutoML. It reads a single image of a nylon loop from the tests directory and sends it to AutoML.
     """
-    _logger.info(f'FROM DCSS: {message}')
     activeOps = context.get_active_operations(message.operation_name)
-    _logger.info(f'Active operations pre-completed={activeOps}')
+    _logger.debug(f'Active operations pre-completed={activeOps}')
     context.get_connection('dcss_conn').send(DcssHtoSOperationUpdate(message.operation_name, message.operation_handle, "about to predict one test image"))
     image_key = "THE-TEST-IMAGE"
     filename = 'tests/loop_nylon.jpg'
@@ -280,13 +285,11 @@ def predict_one(message:DcssStoHStartOperation, context:DcssContext):
 @register_dcss_start_operation_handler('collectLoopImages')
 def collect_loop_images(message:DcssStoHStartOperation, context:DcssContext):
     """
-    This operation initiates the the jpeg receiver, informs DCSS to start_oscillation, as each jpeg image file is received it is processed
-    and the AutoML results sent back as operation updates.
+    Collects a set of JPEG images for analysis by AutoML.
+    Initiates the the jpeg receiver, informs DCSS to start_oscillation, as each jpeg image file is received it is processed and the AutoML results sent back as operation updates.
 
     DCSS may send a single arg <pinBaseSizeHint>, but I think we can ignore it.
     """
-    _logger.info(f'FROM DCSS: {message}')
-
     # 1. Instantiate CollectLoopImageState.
     context.get_active_operations(operation_name=message.operation_name, operation_handle=message.operation_handle)[0].state = CollectLoopImageState()
     opName = message.operation_name
@@ -315,23 +318,20 @@ def collect_loop_images(message:DcssStoHStartOperation, context:DcssContext):
         else:
             _logger.error('RESULTS FOLDER MISSING')
 
-    # 4. Send an operation update message to DCSS to trigger both sample rotation and axis server to send images.
+    # 4. Send an initial operation update message to DCSS to trigger both sample rotation and axis server to send images.
     context.get_connection('dcss_conn').send(DcssHtoSOperationUpdate(message.operation_name, message.operation_handle, "start_oscillation"))
 
 @register_dcss_start_operation_handler('getLoopTip')
 def get_loop_tip(message:DcssStoHStartOperation, context:DcssContext):
     """
-    This operation should return the position of the right (or left) most point of a loop.
-    This operation takes a single optional integer arg <ifaskPinPosFlag>
+    Returns the position of the right-most point of a loop.
+    Takes a single optional integer arg <ifaskPinPosFlag>
     
     1. htos_operation_completed getLoopTip operation_handle normal tipX tipY  (when ifaskPinPosFlag = 0)
        or:
        htos_operation_completed getLoopTip operation_handle normal tipX tipY pinBaseX (when ifaskPinPosFlag = 1)
     2. htos_operation_completed getLoopTip operation_handle error TipNotInView +/-
-
     """
-
-    _logger.info(f'FROM DCSS: {message}')
     # need to confirm that pinBaseX is the same as PinPos in imgCentering.cc
     #
     # 1. Request single jpeg image from axis video server. takes camera as arg.
@@ -345,20 +345,14 @@ def get_loop_info(message:DcssStoHStartOperation, context:DcssContext):
 
     DCSS may send a single arg pinBaseSizeHint, but I think we can ignore it.
     """
-
-    _logger.info(f'FROM DCSS: {message}')
-    # 1. Request single jpeg image from axis video server. takes camera as arg.
     cam = str(context.config.axis_camera)
     context.get_connection('axis_conn').send(AxisImageRequestMessage(''.join(['camera=',cam])))
 
 @register_dcss_start_operation_handler('stopCollectLoopImages')
 def stop_collect_loop_images(message:DcssStoHStartOperation, context:DcssContext):
     """
-    This operation should set a global flag to signal collectLoopImages to stop and optionally to shutdown the jpeg receiver.
+    Sets a global flag to signal collectLoopImages to stop and optionally to shutdown the jpeg receiver.
     """
-
-    _logger.info(f'FROM DCSS: {message}')
-
     # 1. Set image collection to False.
     context.state.collect_images = False
 
@@ -371,7 +365,7 @@ def stop_collect_loop_images(message:DcssStoHStartOperation, context:DcssContext
 @register_dcss_start_operation_handler('reboxLoopImage')
 def rebox_loop_image(message:DcssStoHStartOperation, context:DcssContext):
     """
-    This operation is used to more accurately define the loop bounding box. I'm not sure of it's use with AutoML loop prediction, but it was important for the original edge detection AI developed at SSRL.
+    Refine the loop bounding box. I'm not sure of it's use with AutoML loop prediction, but it was important for the original edge detection AI developed at SSRL.
 
     Parameters:
     index (int): which image we want to inspect
@@ -385,9 +379,7 @@ def rebox_loop_image(message:DcssStoHStartOperation, context:DcssContext):
     resultMinY
     resultMaxY
     (resultMaxY - resultMinY) <--- loopWidth
-
     """
-    _logger.info(f'FROM DCSS: {message}')
     rebox_image = int(message.operation_args[0])
     previous_results = context.state.rebox_images.results[rebox_image]
     _logger.info(f'REQUEST REBOX OF IMAGE: {rebox_image} RESULTS: {previous_results}')
@@ -403,24 +395,21 @@ def rebox_loop_image(message:DcssStoHStartOperation, context:DcssContext):
 @register_message_handler('automl_predict_response')
 def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
     """
-    This handler will process inference results from AutoML.
+    Process inference results returned from AutoML.
     """
-
     # ==============================================================
     activeOps = context.get_active_operations()
     _logger.debug(f'Active operations pre-completed={activeOps}')
     # ==============================================================
 
     # AutoML results filtering.
-    if message.get_score(0) < 0.10:
-        _logger.warning(f'TOP AUTOML SCORE IS BELOW 0.50 THRESHOLD: {message.get_score(0)}')
+    if message.get_score(0) < context.config.automl_thhreshold:
+        _logger.warning(f'TOP AUTOML SCORE IS BELOW {context.config.automl_thhreshold} THRESHOLD: {message.get_score(0)}')
         status = 'failed'
         result = ['no loop detected, AutoML score: ', message.get_score(0)]
     else:
         status = 'normal'
         result = []
-
-
 
     # for i in range(5):
     #     score = message.get_score(i)
@@ -447,7 +436,7 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
     loopScore = round(message.top_score, 5)
 
     for ao in activeOps:
-        if ao.operation_name == 'predictOne':
+        if ao.operation_name == 'testAutoML':
             result = [message.image_key, message.top_score, message.top_bb, message.top_classification, message.top_score]
             msg = ' '.join(map(str,result))
             _logger.info(f'SEND TO DCSS: {msg}')
@@ -462,18 +451,13 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
             context.get_connection('dcss_conn').send(DcssHtoSOperationCompleted(ao.operation_name, ao.operation_handle, status, msg))
         elif ao.operation_name == 'getLoopInfo':
             if status == 'normal':
-                result = [tipX, tipY, pinBaseX, fiberWidth, loopWidth, boxMinX, boxMaxX, boxMinY, boxMaxY, loopWidthX, isMicroMount]
+                result = [tipX, tipY, pinBaseX, fiberWidth, loopWidth, boxMinX, boxMaxX, boxMinY, boxMaxY, loopWidthX, isMicroMount, loopClass, loopScore]
             elif status == 'failed':
                 pass
             msg = ' '.join(map(str,result))
             _logger.info(f'SEND TO DCSS: {msg}')
             context.get_connection('dcss_conn').send(DcssHtoSOperationCompleted(ao.operation_name, ao.operation_handle, status, msg))
         elif ao.operation_name == 'collectLoopImages':
-            # I don't think we need to change the contents of the return message when AutoML fails.
-            # It should be sufficient to set status as "failed", loopFast will raise error if no results
-            # have "normal" status. This allow some percentage of the loop info to be "failed", but as long
-            # as some are "normal" then loopFast might be able to determine edge/face etc.
-
             # Increment AutoML responses received.
             ao.state.automl_responses_received += 1
             received = ao.state.automl_responses_received
@@ -506,11 +490,10 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
                         _logger.warning(f'DID NOT FIND IMAGE: {file_to_adorn}')
 
             # Here for sending the final operation completed message.
-            # still getting a race condition and we terminate early
             elif received == sent:
                 _logger.success(f'SENT: {sent} RECEIVED: {received}' )
                 if context.config.save_images:
-                    write_results(ao.state.results_dir, ao.state.loop_images)
+                    save_loop_info(ao.state.results_dir, ao.state.loop_images)
                     plot_results(ao.state.results_dir, ao.state.loop_images)
                 context.state.rebox_images = ao.state.loop_images
                 _logger.info('SEND OPERATION COMPLETE TO DCSS')
@@ -523,7 +506,6 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
                 _logger.error(f'SENT: {sent} RECEIVED: {received} STATE: {context.state.collect_images}')
                 _logger.error('============================================================================')
 
-
     # ==============================================================
     activeOps = context.get_active_operations()
     _logger.debug(f'Active operations post-completed={activeOps}')
@@ -531,13 +513,8 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
 
 @register_message_handler('jpeg_receiver_image_post_request')
 def jpeg_receiver_image_post_request(message:JpegReceiverImagePostRequestMessage, context:DhsContext):
-    """
-    This handler is triggered when a new JPEG image arrives on the jpeg receiver port.
-    It is then shuttled off to AutoML.
-    """
-
+    """Handles JPEG images arriving on the jpeg receiver port then sends them to AutoMLPredictRequest."""
     _logger.spam(message.file)
-
     activeOps = context.get_active_operations(operation_name='collectLoopImages')
     if len(activeOps) > 0 and context.state.collect_images:
         activeOp = activeOps[0]
@@ -554,15 +531,11 @@ def jpeg_receiver_image_post_request(message:JpegReceiverImagePostRequestMessage
         context.get_connection('automl_conn').send(AutoMLPredictRequest(image_key, message.file))
         activeOp.state.image_index += 1
     else:
-        _logger.warning(f'RECEVIED JPEG, BUT NOT DOING ANYTHING WITH IT.')
+        _logger.warning(f'RECEVIED JPEG, BUT NOT DOING ANYTHING WITH IT. no active collectLoopImages operation.')
 
 @register_message_handler('axis_image_response')
 def axis_image_response(message:AxisImageResponseMessage, context:DhsContext):
-    """
-    This message handler will be used for both getLoopTip and getLoopInfo operations
-    It will process a single JPEG image received from an AXIS video server.
-    """
-
+    """Handles a single JPEG image from Axis video server for both getLoopTip and getLoopInfo operations."""
     _logger.debug(f'RECEIVED {message.file_length} BYTE IMAGE FROM AXIS VIDEO SERVER.')
     activeOps = context.get_active_operations()
     for ao in activeOps:
@@ -576,13 +549,12 @@ def axis_image_response(message:AxisImageResponseMessage, context:DhsContext):
 
 def save_jpeg(image:bytes, index:int=None, save_dir:str=None):
     """
-    Save an image to the specified directory, and increment the number.
+    Saves a JPEG image and increments the file number.
     e.g. if loop_0001.jpeg exists then the next file will be loop_0002.jpeg
     """
-
     new_num = index
     if new_num is None:
-        current_images = glob.glob(''.join([save_dir,'/*.jpeg']))
+        current_images = glob.glob(''.join([save_dir, '/*.jpeg']))
         num_list = [0]
         for img in current_images:
             i = os.path.splitext(img)[0]
@@ -594,7 +566,7 @@ def save_jpeg(image:bytes, index:int=None, save_dir:str=None):
         num_list = sorted(num_list)
         new_num = num_list[-1]+1
 
-    save_name = '{}/loop_{:04}.jpeg'.format(save_dir,new_num)
+    save_name = '{}/loop_{:04}.jpeg'.format(save_dir, new_num)
 
     f = open(save_name, 'w+b')
     f.write(image)
@@ -602,8 +574,7 @@ def save_jpeg(image:bytes, index:int=None, save_dir:str=None):
     _logger.info(f'SAVED JPEG IMAGE FILE: {save_name}')
 
 def draw_bounding_box(file_to_adorn:str, upper_left_corner:list, lower_right_corner:list, tip:list, output_dir:str):
-    """Use OpenCV to draw a bounding box and loop tip crosshair on a jpeg image."""
-
+    """Draw the AutoML bounding box and loop tip crosshair overlaid on a JPEG image."""
     image = cv2.imread(file_to_adorn)
     s = tuple(image.shape[1::-1])
     w = s[0]
@@ -613,19 +584,17 @@ def draw_bounding_box(file_to_adorn:str, upper_left_corner:list, lower_right_cor
     tipX = round(tipX_frac * w)
     tipY = round(tipY_frac * h)
     crosshair_size = round(0.1 * h)
-    # represents the top left corner of rectangle in pixels.
+    # upper left corner of rectangle in pixels.
     start_point = (math.floor(upper_left_corner[0] * w), math.floor(upper_left_corner[1] * h))
-    #_logger.info(f'START: {start_point}')
 
-    # represents the bottom right corner of rectangle in pixels.
+    # lower right corner of rectangle in pixels.
     end_point = (math.ceil(lower_right_corner[0] * w), math.ceil(lower_right_corner[1] * h))
-    #_logger.info(f'END: {end_point}')
 
-    # Color in BGR 
+    # volor in BGR 
     red = (0, 0, 255)
     green = (0, 255, 0)
 
-    # Line thickness of 1 px 
+    # Line thickness in px 
     thickness = 1
 
     image = cv2.rectangle(image, start_point, end_point, red, thickness)
@@ -637,17 +606,16 @@ def draw_bounding_box(file_to_adorn:str, upper_left_corner:list, lower_right_cor
     output_filename = 'automl_' + os.path.basename(file_to_adorn)
     outfile = os.path.join(output_dir, output_filename)
     cv2.imwrite(outfile, image)
-    _logger.info(f'OPENCV DREW BOUNDING BOX: {outfile}')
+    _logger.info(f'DRAW BOUNDING BOX: {outfile}')
 
-def write_results(results_dir:str, images:LoopImageSet):
-    """Writes out current contents of the jpeg list."""
-
-    #timestr = time.strftime("%Y%m%d-%H%M%S")
-    fn = 'results.txt'
+def save_loop_info(results_dir:str, images:LoopImageSet):
+    """Save the accumulated loop info to a CSV file."""
+    fn = 'loop_info.csv'
     results_file = os.path.join(results_dir,fn)
-    with open(results_file, 'w') as f:
-        for item in images.results:
-            f.write('%s\n' % item)
+    with open(results_file, 'w', newline='') as f:
+        writer = csv.writer(f, delimiter=',')
+        for row in images.results:
+            writer.writerow(row)
 
 def plot_results(results_dir:str, images:LoopImageSet):
     """Makes a simple plot of image vs loopWidth."""
@@ -800,7 +768,7 @@ def configure_logging(verbosity):
         os.makedirs(logdir)
 
     logfile = os.path.join(logdir,Path(__file__).stem + '.log')
-    handler = logging.handlers.RotatingFileHandler(logfile, maxBytes=100000, backupCount=5)
+    handler = RotatingFileHandler(logfile, maxBytes=100000, backupCount=5)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     handler.setFormatter(formatter)
     handler.setLevel(loglevel)
@@ -841,6 +809,7 @@ def configure_logging(verbosity):
     # _logger.success("this is a success message")
     # _logger.error("this is an error message")
     # _logger.critical("this is a critical message")
+    return logfile
 
 def run():
     """Entry point for console_scripts."""
