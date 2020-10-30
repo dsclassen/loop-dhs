@@ -748,9 +748,9 @@ def plot_results(results_dir:str, images:LoopImageSet):
         axes.plot(res.x, func(res.x, *fitted_parameters), color='green', marker='o', markersize=22)
         max_x = str(round(res.x,3))
         max_y = str(round(-res.fun,3))
-        coord_label = ''.join(['FACE: Phi = ', max_y, '$^\circ$'])
+        face_label = ''.join(['FACE: Phi = ', max_y, '$^\circ$'])
         props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-        axes.annotate(coord_label,(res.x+0.1,-res.fun+0.1), fontsize=14, bbox=props)
+        axes.annotate(face_label,(res.x+0.1,-res.fun+0.1), fontsize=14, bbox=props)
 
         # min
         fm = lambda xData: func(xData, *fitted_parameters)
@@ -758,11 +758,11 @@ def plot_results(results_dir:str, images:LoopImageSet):
         #print(f'res.x: {res.x}')
         _logger.info(f'LOOP MIN (EDGE): {math.degrees(res.x)}')
         axes.plot(res.x, func(res.x, *fitted_parameters), color='m', marker='o', markersize=22)
-        min_x = str(round(res.x,3))
-        min_y = str(round(res.fun,3))
-        coord_label = ''.join(['EDGE: Phi = ', min_y, '$^\circ$'])
+        min_x = str(round(res.x,2))
+        min_y = str(round(res.fun,2))
+        edge_label = ''.join(['EDGE: Phi = ', min_y, '$^\circ$'])
         props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-        axes.annotate(coord_label,(res.x-0.2,-res.fun-0.2), fontsize=14, bbox=props)
+        axes.annotate(edge_label,(res.x-0.2,res.fun-0.2), fontsize=14, bbox=props)
 
         axes.set_xlabel('Image Phi Position (rad)') # X axis data label
         axes.set_ylabel('Loop Width (px)') # Y axis data label
