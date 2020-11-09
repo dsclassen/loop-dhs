@@ -458,7 +458,7 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
             context.get_connection('dcss_conn').send(DcssHtoSOperationCompleted(ao.operation_name, ao.operation_handle, status, msg))
         elif ao.operation_name == 'collectLoopImages':
             # Increment AutoML responses received.
-            #ao.state.automl_responses_received += 1
+            ao.state.automl_responses_received += 1
             received = ao.state.automl_responses_received
             sent = ao.state.image_index
             #time.sleep(1)
@@ -473,7 +473,7 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
                 _logger.info(f'SEND OPERATION UPDATE TO DCSS: {msg}')
                 context.get_connection('dcss_conn').send(DcssHtoSOperationUpdate(ao.operation_name, ao.operation_handle, msg))
 
-                ao.state.automl_responses_received += 1
+                #ao.state.automl_responses_received += 1
 
                 # Draw the AutoML bounding box if we are saving files to disk.
                 if context.config.save_images:
@@ -531,6 +531,7 @@ def jpeg_receiver_image_post_request(message:JpegReceiverImagePostRequestMessage
         if context.config.save_images:
             save_jpeg(message.file, activeOp.state.image_index, resultsDir)
         context.get_connection('automl_conn').send(AutoMLPredictRequest(image_key, message.file))
+        _logger.debug(f'image_key: {image_key}')
         activeOp.state.image_index += 1
     else:
         _logger.warning(f'RECEVIED JPEG, BUT NOT DOING ANYTHING WITH IT. no active collectLoopImages operation.')
