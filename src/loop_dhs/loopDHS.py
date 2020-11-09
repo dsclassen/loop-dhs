@@ -2,6 +2,10 @@
 """
 loopDHS
 """
+__author__ = "Scott Classen"
+__copyright__ = "Scott Classen"
+__license__ = "mit"
+
 import os
 import platform
 import logging
@@ -11,7 +15,6 @@ import verboselogs
 import signal
 import sys
 import yaml
-import time
 import io
 import glob
 import re
@@ -37,10 +40,6 @@ from pydhsfw.jpeg_receiver import JpegReceiverImagePostRequestMessage
 from pydhsfw.axis import AxisImageRequestMessage, AxisImageResponseMessage
 
 from loop_dhs import __version__
-
-__author__ = "Scott Classen"
-__copyright__ = "Scott Classen"
-__license__ = "mit"
 
 _logger = verboselogs.VerboseLogger('loopDHS')
 
@@ -459,7 +458,7 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
             context.get_connection('dcss_conn').send(DcssHtoSOperationCompleted(ao.operation_name, ao.operation_handle, status, msg))
         elif ao.operation_name == 'collectLoopImages':
             # Increment AutoML responses received.
-            ao.state.automl_responses_received += 1
+            #ao.state.automl_responses_received += 1
             received = ao.state.automl_responses_received
             sent = ao.state.image_index
             #time.sleep(1)
@@ -473,6 +472,8 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
                 ao.state.loop_images.add_results(result)
                 _logger.info(f'SEND OPERATION UPDATE TO DCSS: {msg}')
                 context.get_connection('dcss_conn').send(DcssHtoSOperationUpdate(ao.operation_name, ao.operation_handle, msg))
+
+                ao.state.automl_responses_received += 1
 
                 # Draw the AutoML bounding box if we are saving files to disk.
                 if context.config.save_images:
@@ -624,7 +625,7 @@ def plot_loop_widths(results_dir:str, images:LoopImageSet):
     Plot of image vs loopWidth.
     
     The curve fitting code is adapted from James Phillips.
-    Here is a  Python fitter with a sine equation and your data using the scipy.optimize Differential Evolution genetic algorithm module to determine initial parameter estimates for curve_fit's non-linear solver. 
+    Here is a Python fitter with a sine equation and your data using the scipy.optimize Differential Evolution genetic algorithm module to determine initial parameter estimates for curve_fit's non-linear solver. 
     https://stackoverflow.com/a/58478075/3023774
     """
     indices = [e[1] for e in images.results]
