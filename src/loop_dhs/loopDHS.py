@@ -113,6 +113,18 @@ class LoopDHSConfig(Dotty):
     def automl_thhreshold(self):
         return self['loopdhs.automl.threshold']
 
+    @property
+    def osci_delta(self):
+        return self['loopdhs.osci_delta']
+
+    @property
+    def osci_time(self):
+        return self['loopdhs.osci_time']
+
+    @property
+    def video_fps(self):
+        return self['loopdhs.video_fps']
+
 class LoopDHSState():
     """Class to hold DHS state info."""
     def __init__(self):
@@ -142,6 +154,7 @@ class CollectLoopImageState():
         self._image_index = 0
         self._automl_responses_received = 0
         self._results_dir = None
+        self._done = False
 
     @property
     def loop_images(self):
@@ -170,6 +183,14 @@ class CollectLoopImageState():
     @results_dir.setter
     def results_dir(self, dir:str):
         self._results_dir = dir
+
+    @property
+    def done(self)->bool:
+        return self._done
+
+    @done.setter
+    def done(self, done_state:bool):
+        self._done = done_state
 
 @register_message_handler('dhs_init')
 def dhs_init(message:DhsInit, context:DhsContext):
@@ -525,21 +546,24 @@ def jpeg_receiver_image_post_request(message:JpegReceiverImagePostRequestMessage
         opName = activeOp.operation_name
         opHandle = activeOp.operation_handle
         resultsDir = activeOp.state.results_dir
+
+        # calculate expected number of images
+        expected = context.config.osci_time * context.config.video_fps
+
+
         _logger.debug(f'ADD {len(message.file)} BYTE IMAGE TO JPEG LIST')
         activeOp.state.loop_images.add_image(message.file)
-        image_key = '1:2:-999'
+
         if context.config.save_images:
             save_jpeg(message.file, activeOp.state.image_index, resultsDir)
 
-        if context.state.collect_images:
+        if activeOp.state.image_index < expected:
             image_key = ':'.join([opName,opHandle,str(activeOp.state.image_index)])
-        elif not context.state.collect_images:
-            image_key = ':'.join([opName,opHandle,'999'])
         else:
-            _logger.warning(f'SHOULDNT BE HERE')
+            image_key = ':'.join([opName,opHandle,'999'])
 
         context.get_connection('automl_conn').send(AutoMLPredictRequest(image_key, message.file))
-        _logger.debug(f'image_key: {image_key}')
+        _logger.info(f'IMAGE_KEY: {image_key}')
         activeOp.state.image_index += 1
     else:
         _logger.warning(f'RECEVIED JPEG, BUT NOT DOING ANYTHING WITH IT. no active collectLoopImages operation.')
