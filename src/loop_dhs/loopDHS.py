@@ -483,10 +483,10 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
             received = ao.state.automl_responses_received
             sent = ao.state.image_index
             index = int(message.image_key.split(':')[2])
-            expected = context.config.osci_time * context.config.video_fps
+            expected_frames = context.config.osci_time * context.config.video_fps
 
             # Here for creating and sending update messages.
-            if index <= expected:
+            if index < expected_frames:
                 _logger.info(f'SENT: {sent} RECEIVED: {received}' )
                 
                 # adding extra return fields here may have implications in loopFast.tcl
@@ -515,7 +515,7 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
 
             # Here for sending the final operation completed message.
             # The problem is that sometimes we end up here too soon when the sample has not completed its rotation and all teh JPEGs have not been sent for inference.
-            elif sent == received:
+            elif sent == received or index >= expected_frames:
                 _logger.success(f'SENT: {sent} RECEIVED: {received}' )
                 if context.config.save_images:
                     save_loop_info(ao.state.results_dir, ao.state.loop_images)
@@ -549,7 +549,7 @@ def jpeg_receiver_image_post_request(message:JpegReceiverImagePostRequestMessage
         resultsDir = activeOp.state.results_dir
 
         # calculate expected number of images
-        expected = context.config.osci_time * context.config.video_fps
+        #expected_frames = context.config.osci_time * context.config.video_fps
 
 
         _logger.debug(f'ADD {len(message.file)} BYTE IMAGE TO JPEG LIST')
@@ -558,10 +558,12 @@ def jpeg_receiver_image_post_request(message:JpegReceiverImagePostRequestMessage
         if context.config.save_images:
             save_jpeg(message.file, activeOp.state.image_index, resultsDir)
 
-        if activeOp.state.image_index < expected:
-            image_key = ':'.join([opName,opHandle,str(activeOp.state.image_index)])
-        else:
-            image_key = ':'.join([opName,opHandle,'999'])
+        # if activeOp.state.image_index < expected_frames:
+        #     image_key = ':'.join([opName,opHandle,str(activeOp.state.image_index)])
+        # else:
+        #     image_key = ':'.join([opName,opHandle,'999'])
+
+        image_key = ':'.join([opName,opHandle,str(activeOp.state.image_index)])
 
         context.get_connection('automl_conn').send(AutoMLPredictRequest(image_key, message.file))
         _logger.info(f'IMAGE_KEY: {image_key}')
