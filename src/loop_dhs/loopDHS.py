@@ -485,7 +485,7 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
             index = int(message.image_key.split(':')[2])
 
             # Here for creating and sending update messages.
-            if received < sent and index != 999:
+            if index <= 90:
                 _logger.info(f'SENT: {sent} RECEIVED: {received}' )
                 
                 # adding extra return fields here may have implications in loopFast.tcl
@@ -514,7 +514,7 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
 
             # Here for sending the final operation completed message.
             # The problem is that sometimes we end up here too soon when the sample has not completed its rotation and all teh JPEGs have not been sent for inference.
-            elif received == sent and index == 999:
+            elif index > 90:
                 _logger.success(f'SENT: {sent} RECEIVED: {received}' )
                 if context.config.save_images:
                     save_loop_info(ao.state.results_dir, ao.state.loop_images)
