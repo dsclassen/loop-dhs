@@ -517,7 +517,8 @@ def jpeg_receiver_image_post_request(message:JpegReceiverImagePostRequestMessage
     """Handles JPEG images arriving on the jpeg receiver port then sends them to AutoMLPredictRequest."""
     _logger.spam(message.file)
     activeOps = context.get_active_operations(operation_name='collectLoopImages')
-    if len(activeOps) > 0 and context.state.collect_images:
+    #if len(activeOps) > 0 and context.state.collect_images:
+    if len(activeOps) > 0:
         activeOp = activeOps[0]
         opName = activeOp.operation_name
         opHandle = activeOp.operation_handle
