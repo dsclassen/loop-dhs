@@ -461,11 +461,12 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
             ao.state.automl_responses_received += 1
             received = ao.state.automl_responses_received
             sent = ao.state.image_index
-            #time.sleep(1)
+            index = int(message.image_key.split(':')[2])
+
             # Here for creating and sending update messages.
-            if received < sent:
+            if received < sent and index != 999:
                 _logger.info(f'SENT: {sent} RECEIVED: {received}' )
-                index = int(message.image_key.split(':')[2])
+                
                 # adding extra return fields here may have implications in loopFast.tcl
                 result = ['LOOP_INFO', index, status, tipX, tipY, pinBaseX, fiberWidth, loopWidth, boxMinX, boxMaxX, boxMinY, boxMaxY, loopWidthX, isMicroMount, loopClass, loopScore]
                 msg = ' '.join(map(str,result))
@@ -491,7 +492,8 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
                         _logger.warning(f'DID NOT FIND IMAGE: {file_to_adorn}')
 
             # Here for sending the final operation completed message.
-            elif received == sent:
+            # The problem is that sometimes we end up here too soon when the sample has not completed its rotation and all teh JPEGs have not been sent for inference.
+            elif received == sent and index == 999:
                 _logger.success(f'SENT: {sent} RECEIVED: {received}' )
                 if context.config.save_images:
                     save_loop_info(ao.state.results_dir, ao.state.loop_images)
@@ -517,19 +519,25 @@ def jpeg_receiver_image_post_request(message:JpegReceiverImagePostRequestMessage
     """Handles JPEG images arriving on the jpeg receiver port then sends them to AutoMLPredictRequest."""
     _logger.spam(message.file)
     activeOps = context.get_active_operations(operation_name='collectLoopImages')
-    #if len(activeOps) > 0 and context.state.collect_images:
+
     if len(activeOps) > 0:
         activeOp = activeOps[0]
         opName = activeOp.operation_name
         opHandle = activeOp.operation_handle
         resultsDir = activeOp.state.results_dir
-        # Store a set of images from the most recent collectLoopImages for subsequent analysis with reboxLoopImage
         _logger.debug(f'ADD {len(message.file)} BYTE IMAGE TO JPEG LIST')
         activeOp.state.loop_images.add_image(message.file)
-
-        image_key = ':'.join([opName,opHandle,str(activeOp.state.image_index)])
+        image_key = '1:2:-999'
         if context.config.save_images:
             save_jpeg(message.file, activeOp.state.image_index, resultsDir)
+
+        if context.state.collect_images:
+            image_key = ':'.join([opName,opHandle,str(activeOp.state.image_index)])
+        elif not context.state.collect_images:
+            image_key = ':'.join([opName,opHandle,'999'])
+        else:
+            _logger.warning(f'SHOULDNT BE HERE')
+
         context.get_connection('automl_conn').send(AutoMLPredictRequest(image_key, message.file))
         _logger.debug(f'image_key: {image_key}')
         activeOp.state.image_index += 1
