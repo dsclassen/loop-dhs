@@ -377,7 +377,8 @@ def stop_collect_loop_images(message:DcssStoHStartOperation, context:DcssContext
     context.state.collect_images = False
 
     # 2. Shutdown JPEG receiver port.
-    context.get_connection('jpeg_receiver_conn').disconnect()
+    # try moving this to automl_predict_response handler
+    #context.get_connection('jpeg_receiver_conn').disconnect()
 
     # 3. Send operation completed message to DCSS
     context.get_connection('dcss_conn').send(DcssHtoSOperationCompleted(message.operation_name,message.operation_handle,'normal','flag set'))
@@ -485,8 +486,8 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
             index = int(message.image_key.split(':')[2])
             expected_frames = context.config.osci_time * context.config.video_fps
 
-            # Here for creating and sending update messages.
-            if index < expected_frames:
+            # Send Operation Update message.
+            if sent < received:
                 _logger.info(f'SENT: {sent} RECEIVED: {received}' )
                 
                 # adding extra return fields here may have implications in loopFast.tcl
@@ -513,9 +514,8 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
                     else:
                         _logger.warning(f'DID NOT FIND IMAGE: {file_to_adorn}')
 
-            # Here for sending the final operation completed message.
-            # The problem is that sometimes we end up here too soon when the sample has not completed its rotation and all teh JPEGs have not been sent for inference.
-            elif sent == received or index >= expected_frames:
+            # Send Operation Complete message.
+            elif sent == received and context.state.collect_images is False:
                 _logger.success(f'SENT: {sent} RECEIVED: {received}' )
                 if context.config.save_images:
                     save_loop_info(ao.state.results_dir, ao.state.loop_images)
@@ -523,6 +523,8 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
                 context.state.rebox_images = ao.state.loop_images
                 _logger.info('SEND OPERATION COMPLETE TO DCSS')
                 context.get_connection('dcss_conn').send(DcssHtoSOperationCompleted(ao.operation_name, ao.operation_handle,'normal','done'))
+                # moved from stopCollectLoopImages
+                context.get_connection('jpeg_receiver_conn').disconnect()
             
             # Here if images received from AutoML is equal to the number sent, BUT we are still in a "collect" mode. i.e. context.state.collect_images = True
             # This would indicate the AutoML is able to keep up with the images being ingested by the JPEG receiver port.
@@ -567,6 +569,7 @@ def jpeg_receiver_image_post_request(message:JpegReceiverImagePostRequestMessage
 
         context.get_connection('automl_conn').send(AutoMLPredictRequest(image_key, message.file))
         _logger.info(f'IMAGE_KEY: {image_key}')
+        # increment image index which we use as a count of images SENT.
         activeOp.state.image_index += 1
     else:
         _logger.warning(f'RECEVIED JPEG, BUT NOT DOING ANYTHING WITH IT. no active collectLoopImages operation.')
