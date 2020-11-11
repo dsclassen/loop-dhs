@@ -479,6 +479,7 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
             _logger.info(f'SEND TO DCSS: {msg}')
             context.get_connection('dcss_conn').send(DcssHtoSOperationCompleted(ao.operation_name, ao.operation_handle, status, msg))
         elif ao.operation_name == 'collectLoopImages':
+
             # Increment AutoML responses received.
             ao.state.automl_responses_received += 1
             received = ao.state.automl_responses_received
@@ -487,7 +488,7 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
             expected_frames = context.config.osci_time * context.config.video_fps
 
             # Send Operation Update message.
-            if sent < received:
+            if received < sent:
                 _logger.info(f'SENT: {sent} RECEIVED: {received}' )
                 
                 # adding extra return fields here may have implications in loopFast.tcl
@@ -532,6 +533,7 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
                 _logger.error('============================================================================')
                 _logger.error(f'SENT: {sent} RECEIVED: {received} STATE: {context.state.collect_images}')
                 _logger.error('============================================================================')
+
 
     # ==============================================================
     activeOps = context.get_active_operations()
