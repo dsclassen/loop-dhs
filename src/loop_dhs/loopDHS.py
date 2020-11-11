@@ -516,7 +516,7 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
                         _logger.warning(f'DID NOT FIND IMAGE: {file_to_adorn}')
 
             # Send Operation Complete message.
-            elif sent == received and context.state.collect_images is False:
+            elif received == sent and context.state.collect_images is True:
                 _logger.success(f'SENT: {sent} RECEIVED: {received}' )
                 if context.config.save_images:
                     save_loop_info(ao.state.results_dir, ao.state.loop_images)
