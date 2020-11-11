@@ -267,7 +267,7 @@ def dhs_start(message:DhsStart, context:DhsContext):
 
     # Create a jpeg receiving port. Only connect when ready to receive images.
     context.create_connection('jpeg_receiver_conn', 'jpeg_receiver', context.config.jpeg_receiver_url)
-    #context.get_connection('jpeg_receiver_conn').connect()
+    context.get_connection('jpeg_receiver_conn').connect()
 
 @register_message_handler('stoc_send_client_type')
 def dcss_send_client_type(message:DcssStoCSendClientType, context:Context):
@@ -488,7 +488,7 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
             expected_frames = context.config.osci_time * context.config.video_fps
 
             # Send Operation Update message.
-            if received < sent:
+            if received < expected_frames:
                 _logger.info(f'SENT: {sent} RECEIVED: {received}' )
                 
                 # adding extra return fields here may have implications in loopFast.tcl
@@ -516,7 +516,7 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
                         _logger.warning(f'DID NOT FIND IMAGE: {file_to_adorn}')
 
             # Send Operation Complete message.
-            elif received == sent and context.state.collect_images is True:
+            elif received >= expected_frames:
                 _logger.success(f'SENT: {sent} RECEIVED: {received}' )
                 if context.config.save_images:
                     save_loop_info(ao.state.results_dir, ao.state.loop_images)
@@ -525,7 +525,7 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
                 _logger.info('SEND OPERATION COMPLETE TO DCSS')
                 context.get_connection('dcss_conn').send(DcssHtoSOperationCompleted(ao.operation_name, ao.operation_handle,'normal','done'))
                 # moved from stopCollectLoopImages
-                context.get_connection('jpeg_receiver_conn').disconnect()
+                #context.get_connection('jpeg_receiver_conn').disconnect()
             
             # Here if images received from AutoML is equal to the number sent, BUT we are still in a "collect" mode. i.e. context.state.collect_images = True
             # This would indicate the AutoML is able to keep up with the images being ingested by the JPEG receiver port.
