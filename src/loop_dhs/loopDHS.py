@@ -21,6 +21,7 @@ import re
 import cv2
 import math
 import csv
+import time
 import matplotlib
 from matplotlib import pyplot as plt
 from scipy.optimize import curve_fit, minimize_scalar
@@ -267,7 +268,7 @@ def dhs_start(message:DhsStart, context:DhsContext):
 
     # Create a jpeg receiving port. Only connect when ready to receive images.
     context.create_connection('jpeg_receiver_conn', 'jpeg_receiver', context.config.jpeg_receiver_url)
-    context.get_connection('jpeg_receiver_conn').connect()
+    #context.get_connection('jpeg_receiver_conn').connect()
 
 @register_message_handler('stoc_send_client_type')
 def dcss_send_client_type(message:DcssStoCSendClientType, context:Context):
@@ -486,11 +487,12 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
             sent = ao.state.image_index
             index = int(message.image_key.split(':')[2])
             expected_frames = context.config.osci_time * context.config.video_fps
+            collect =  context.state.collect_images
 
             # Send Operation Update message.
-            if received < expected_frames:
-                _logger.info(f'SENT: {sent} RECEIVED: {received}' )
-                
+            if received < expected_frames and collect is True:
+                _logger.info(f'SENT: {sent} RECEIVED: {received} COLLECT: {collect}' )
+
                 # adding extra return fields here may have implications in loopFast.tcl
                 result = ['LOOP_INFO', index, status, tipX, tipY, pinBaseX, fiberWidth, loopWidth, boxMinX, boxMaxX, boxMinY, boxMaxY, loopWidthX, isMicroMount, loopClass, loopScore]
                 msg = ' '.join(map(str,result))
@@ -517,7 +519,7 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
 
             # Send Operation Complete message.
             elif received >= expected_frames:
-                _logger.success(f'SENT: {sent} RECEIVED: {received}' )
+                _logger.success(f'SENT: {sent} RECEIVED: {received} COLLECT: {collect}' )
                 if context.config.save_images:
                     save_loop_info(ao.state.results_dir, ao.state.loop_images)
                     plot_loop_widths(ao.state.results_dir, ao.state.loop_images)
@@ -525,14 +527,17 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
                 _logger.info('SEND OPERATION COMPLETE TO DCSS')
                 context.get_connection('dcss_conn').send(DcssHtoSOperationCompleted(ao.operation_name, ao.operation_handle,'normal','done'))
                 # moved from stopCollectLoopImages
-                #context.get_connection('jpeg_receiver_conn').disconnect()
+                context.get_connection('jpeg_receiver_conn').disconnect()
+                time.sleep(2)
             
             # Here if images received from AutoML is equal to the number sent, BUT we are still in a "collect" mode. i.e. context.state.collect_images = True
             # This would indicate the AutoML is able to keep up with the images being ingested by the JPEG receiver port.
             else:
                 _logger.error('============================================================================')
-                _logger.error(f'SENT: {sent} RECEIVED: {received} STATE: {context.state.collect_images}')
+                _logger.error(f'SENT: {sent} RECEIVED: {received} COLLECT: {collect}' )
                 _logger.error('============================================================================')
+                context.get_connection('jpeg_receiver_conn').disconnect()
+                time.sleep(2)
 
 
     # ==============================================================
@@ -575,6 +580,9 @@ def jpeg_receiver_image_post_request(message:JpegReceiverImagePostRequestMessage
         activeOp.state.image_index += 1
     else:
         _logger.warning(f'RECEVIED JPEG, BUT NOT DOING ANYTHING WITH IT. no active collectLoopImages operation.')
+        # this doesn't seem to do anything.???
+        context.get_connection('jpeg_receiver_conn').disconnect()
+        time.sleep(2)
 
 @register_message_handler('axis_image_response')
 def axis_image_response(message:AxisImageResponseMessage, context:DhsContext):
