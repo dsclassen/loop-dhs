@@ -320,7 +320,7 @@ def collect_loop_images(message:DcssStoHStartOperation, context:DcssContext):
     context.state.collect_images = True
     
     # 3. Open the JPEG receiver port.
-    context.get_connection('jpeg_receiver_conn').connect()
+    #context.get_connection('jpeg_receiver_conn').connect()
 
     # make a RESULTS directory for this instance of the operation.
     if context.config.save_images:
@@ -527,8 +527,8 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
                 _logger.info('SEND OPERATION COMPLETE TO DCSS')
                 context.get_connection('dcss_conn').send(DcssHtoSOperationCompleted(ao.operation_name, ao.operation_handle,'normal','done'))
                 # moved from stopCollectLoopImages
-                context.get_connection('jpeg_receiver_conn').disconnect()
-                time.sleep(2)
+                #context.get_connection('jpeg_receiver_conn').disconnect()
+                #time.sleep(2)
             
             # Here if images received from AutoML is equal to the number sent, BUT we are still in a "collect" mode. i.e. context.state.collect_images = True
             # This would indicate the AutoML is able to keep up with the images being ingested by the JPEG receiver port.
@@ -536,8 +536,8 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
                 _logger.error('============================================================================')
                 _logger.error(f'SENT: {sent} RECEIVED: {received} COLLECT: {collect}' )
                 _logger.error('============================================================================')
-                context.get_connection('jpeg_receiver_conn').disconnect()
-                time.sleep(2)
+                #context.get_connection('jpeg_receiver_conn').disconnect()
+                #time.sleep(2)
 
 
     # ==============================================================
@@ -581,8 +581,8 @@ def jpeg_receiver_image_post_request(message:JpegReceiverImagePostRequestMessage
     else:
         _logger.warning(f'RECEVIED JPEG, BUT NOT DOING ANYTHING WITH IT. no active collectLoopImages operation.')
         # this doesn't seem to do anything.???
-        context.get_connection('jpeg_receiver_conn').disconnect()
-        time.sleep(2)
+        c#ontext.get_connection('jpeg_receiver_conn').disconnect()
+        #time.sleep(2)
 
 @register_message_handler('axis_image_response')
 def axis_image_response(message:AxisImageResponseMessage, context:DhsContext):
