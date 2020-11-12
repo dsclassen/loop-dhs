@@ -320,7 +320,7 @@ def collect_loop_images(message:DcssStoHStartOperation, context:DcssContext):
     context.state.collect_images = True
     
     # 3. Open the JPEG receiver port.
-    #context.get_connection('jpeg_receiver_conn').connect()
+    context.get_connection('jpeg_receiver_conn').connect()
 
     # make a RESULTS directory for this instance of the operation.
     if context.config.save_images:
@@ -491,13 +491,13 @@ def automl_predict_response(message:AutoMLPredictResponse, context:DcssContext):
 
             # Send Operation Update message.
             if received < expected_frames and collect is True:
-                _logger.info(f'SENT: {sent} RECEIVED: {received} COLLECT: {collect}' )
+                _logger.info(f'OPERATION UPDATE SENT TO AutoML: {sent} RECEIVED FROM AutoML: {received} COLLECT: {collect}' )
 
                 # adding extra return fields here may have implications in loopFast.tcl
                 result = ['LOOP_INFO', index, status, tipX, tipY, pinBaseX, fiberWidth, loopWidth, boxMinX, boxMaxX, boxMinY, boxMaxY, loopWidthX, isMicroMount, loopClass, loopScore]
                 msg = ' '.join(map(str,result))
                 ao.state.loop_images.add_results(result)
-                _logger.info(f'SEND OPERATION UPDATE TO DCSS: {msg}')
+                _logger.info(f'OPERATION UPDATE SEND TO DCSS: {msg}')
                 context.get_connection('dcss_conn').send(DcssHtoSOperationUpdate(ao.operation_name, ao.operation_handle, msg))
 
                 #ao.state.automl_responses_received += 1
@@ -575,13 +575,13 @@ def jpeg_receiver_image_post_request(message:JpegReceiverImagePostRequestMessage
         image_key = ':'.join([opName,opHandle,str(activeOp.state.image_index)])
 
         context.get_connection('automl_conn').send(AutoMLPredictRequest(image_key, message.file))
-        _logger.info(f'IMAGE_KEY: {image_key}')
+        _logger.debug(f'IMAGE_KEY: {image_key}')
         # increment image index which we use as a count of images SENT.
         activeOp.state.image_index += 1
     else:
         _logger.warning(f'RECEVIED JPEG, BUT NOT DOING ANYTHING WITH IT. no active collectLoopImages operation.')
         # this doesn't seem to do anything.???
-        c#ontext.get_connection('jpeg_receiver_conn').disconnect()
+        #context.get_connection('jpeg_receiver_conn').disconnect()
         #time.sleep(2)
 
 @register_message_handler('axis_image_response')
