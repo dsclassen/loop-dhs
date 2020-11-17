@@ -3,9 +3,9 @@
 import pytest
 from loop_dhs.skeleton import fib
 
-__author__ = "Scott Classen"
-__copyright__ = "Scott Classen"
-__license__ = "mit"
+__author__ = 'Scott Classen'
+__copyright__ = 'Scott Classen'
+__license__ = 'mit'
 
 
 def test_fib():
