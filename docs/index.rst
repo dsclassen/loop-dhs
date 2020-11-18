@@ -29,11 +29,11 @@ Contents
 .. toctree::
    :maxdepth: 2
 
+   Installation <install>
+   Module Reference <api/modules>
    License <license>
    Authors <authors>
    Changelog <changelog>
-   Module Reference <api/modules>
-
 
 Indices and tables
 ==================

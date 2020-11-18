@@ -2,7 +2,7 @@
 Changelog
 =========
 
-Version 0.1
+Version 0.0.1 (11/18/2020)
 ===========
 
 - Feature A added
