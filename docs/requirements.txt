@@ -1,1 +1,1 @@
-git+ssh://git@github.com/tetrahedron-technologies/pydhsfw.git@master#egg=pydhsfw
+git+https://git@github.com/tetrahedron-technologies/pydhsfw.git
