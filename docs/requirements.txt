@@ -1,1 +1,0 @@
-git+https://git@github.com/tetrahedron-technologies/pydhsfw.git
