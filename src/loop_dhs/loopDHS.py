@@ -523,7 +523,7 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
         for i in range(5):
             thing = message.get_detection_class_as_text(i)
             score = message.get_score(i)
-            _logger.debug(f'INFERENCE RESULT #{i} IS A: {thing: <8} SCORE: {message.get_score(i)}')
+            _logger.debug(f'INFERENCE RESULT #{i} IS A: {thing: <8} SCORE: {score}')
             if thing == 'pin' and message.pin_num is None:
                 message.pin_num = i
             elif (thing == 'mitegen' or thing == 'nylon') and message.loop_num is None:
@@ -651,20 +651,38 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                 # ao.state.automl_responses_received += 1
 
                 # Draw the AutoML bounding box if we are saving files to disk.
+                # could be problems if the bb properties are undefined.
                 if context.config.save_images:
-                    upper_left = [message.loop_bb_minX, message.loop_bb_minY]
-                    lower_right = [message.loop_bb_maxX, message.loop_bb_maxY]
-                    tip = [tipX, tipY]
+                    if message.loop_num is not None:
+                        loop_upper_left = [message.loop_bb_minX, message.loop_bb_minY]
+                        loop_lower_right = [message.loop_bb_maxX, message.loop_bb_maxY]
+                        loop_tip = [tipX, tipY]
+                    else:
+                        loop_upper_left = [0.01, 0.01]
+                        loop_lower_right = [0.02, 0.02]
+                        loop_tip = [0.5,0.5]
+
+                    if message.pin_num is not None:
+                        pin_upper_left = [message.pin_bb_minX, message.pin_bb_minY]
+                        pin_lower_right = [message.pin_bb_maxX, message.pin_bb_maxY]
+                    else:
+                        pin_upper_left = [0.03, 0.03]
+                        pin_lower_right = [0.04, 0.04]
+
+                    
                     _logger.info(
-                        f'DRAW BOUNDING BOX FOR IMAGE: {index} UL: {upper_left} LR: {lower_right} TIP: {tip}'
+                        f'DRAW LOOP BOUNDING BOX FOR IMAGE: {index} UL: {loop_upper_left} LR: {loop_lower_right} TIP: {loop_tip}'
                     )
+                    _logger.info(
+                        f'DRAW PIN BOUNDING BOX FOR IMAGE: {index} UL: {pin_upper_left} LR: {pin_lower_right}'
+                    )
+
                     axisfilename = 'loop_{:04}.jpeg'.format(index)
-                    # file_to_adorn = os.path.join(context.config.save_image_dir, axisfilename)
                     file_to_adorn = os.path.join(ao.state.results_dir, axisfilename)
                     output_dir = os.path.join(ao.state.results_dir, 'bboxes')
                     if os.path.isfile(file_to_adorn):
                         draw_bounding_box(
-                            file_to_adorn, upper_left, lower_right, tip, output_dir
+                            file_to_adorn, loop_upper_left, loop_lower_right, loop_tip, pin_upper_left, pin_lower_right, output_dir
                         )
                     else:
                         _logger.warning(f'DID NOT FIND IMAGE: {file_to_adorn}')
@@ -796,9 +814,11 @@ def save_jpeg(image: bytes, index: int = None, save_dir: str = None):
 
 def draw_bounding_box(
     file_to_adorn: str,
-    upper_left_corner: list,
-    lower_right_corner: list,
+    loop_upper_left_corner: list,
+    loop_lower_right_corner: list,
     tip: list,
+    pin_upper_left_corner: list,
+    pin_lower_right_corner: list,
     output_dir: str,
 ):
     """Draw the AutoML bounding box and loop tip crosshair overlaid on a JPEG image."""
@@ -812,25 +832,35 @@ def draw_bounding_box(
     tipY = round(tipY_frac * h)
     crosshair_size = round(0.1 * h)
     # upper left corner of rectangle in pixels.
-    start_point = (
-        math.floor(upper_left_corner[0] * w),
-        math.floor(upper_left_corner[1] * h),
+    loop_start_point = (
+        math.floor(loop_upper_left_corner[0] * w),
+        math.floor(loop_upper_left_corner[1] * h),
+    )
+    pin_start_point = (
+        math.floor(pin_upper_left_corner[0] * w),
+        math.floor(pin_upper_left_corner[1] * h),
     )
 
     # lower right corner of rectangle in pixels.
-    end_point = (
-        math.ceil(lower_right_corner[0] * w),
-        math.ceil(lower_right_corner[1] * h),
+    loop_end_point = (
+        math.ceil(loop_lower_right_corner[0] * w),
+        math.ceil(loop_lower_right_corner[1] * h),
+    )
+    pin_end_point = (
+        math.ceil(pin_lower_right_corner[0] * w),
+        math.ceil(pin_lower_right_corner[1] * h),
     )
 
     # volor in BGR
     red = (0, 0, 255)
     green = (0, 255, 0)
+    magenta = (255, 0 , 255)
 
     # Line thickness in px
     thickness = 1
 
-    image = cv2.rectangle(image, start_point, end_point, red, thickness)
+    image = cv2.rectangle(image, loop_start_point, loop_end_point, red, thickness)
+    image = cv2.rectangle(image, pin_start_point, pin_end_point, magenta, thickness)
     cross_hair_horz = [(tipX - crosshair_size, tipY), (tipX + crosshair_size, tipY)]
     cross_hair_vert = [(tipX, tipY - crosshair_size), (tipX, tipY + crosshair_size)]
     image = cv2.line(image, cross_hair_horz[0], cross_hair_horz[1], green, thickness)
