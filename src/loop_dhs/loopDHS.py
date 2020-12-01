@@ -524,9 +524,9 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
             thing = message.get_detection_class_as_text(i)
             score = message.get_score(i)
             _logger.spam(f'INFERENCE RESULT #{i} IS A: {thing} SCORE: {message.get_score(i)}')
-            if thing == 'pin' and score > context.config.automl_thhreshold and message.pin_num is None:
+            if thing == 'pin' and message.pin_num is None:
                 message.pin_num = i
-            elif (thing == 'mitegen' or thing == 'nylon') and score > context.config.automl_thhreshold and message.loop_num is None:
+            elif (thing == 'mitegen' or thing == 'nylon') and message.loop_num is None:
                 message.loop_num = i
             else:
                 pass
