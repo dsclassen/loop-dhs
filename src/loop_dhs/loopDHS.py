@@ -650,8 +650,8 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
 
                 # Draw the AutoML bounding box if we are saving files to disk.
                 if context.config.save_images:
-                    upper_left = [message.bb_minX, message.bb_minY]
-                    lower_right = [message.bb_maxX, message.bb_maxY]
+                    upper_left = [message.loop_bb_minX, message.loop_bb_minY]
+                    lower_right = [message.loop_bb_maxX, message.loop_bb_maxY]
                     tip = [tipX, tipY]
                     _logger.info(
                         f'DRAW BOUNDING BOX FOR IMAGE: {index} UL: {upper_left} LR: {lower_right} TIP: {tip}'
