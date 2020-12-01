@@ -514,43 +514,50 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
             f'TOP AUTOML SCORE IS BELOW {context.config.automl_thhreshold} THRESHOLD: {message.get_score(0)}'
         )
         status = 'failed'
-        result = ['no loop detected, AutoML score: ', message.get_score(0)]
+        result = ['no loop or pin detected, AutoML score: ', message.get_score(0)]
     else:
         status = 'normal'
         result = []
 
-    # for i in range(5):
-    #     score = message.get_score(i)
-    #     _logger.debug(f'INFERENCE RESULT #{i} HAS SCORE: {score}')
+        for i in range(5):
+            thing = message.get_obj(i)
+            _logger.spam(f'INFERENCE RESULT #{i} IS A: {thing} SCORE: {message.get_score(i)}')
+            if thing == 'pin' and message.pin_num is None:
+                message.pin_num = i
+            elif (thing == 'mitegen' or thing == 'nylon') and message.loop_num is None:
+                message.loop_num = i
+            else:
+                pass
+
 
     # Do the maths on AutoML response values.
-    tipX = round(message.bb_maxX, 5)
+    tipX = round(message.loop_bb_maxX, 5)
     # This is not ideal, but for now the best I can come up with is to add minY to 1/2 the loopWidth
-    tipY = round(message.bb_minY + ((message.bb_maxY - message.bb_minY) / 2), 5)
-    pinBaseX = 0.111  # needed for loopFast_checkInitPosition
+    tipY = round(message.loop_bb_minY + ((message.loop_bb_maxY - message.loop_bb_minY) / 2), 5)
+    pinBaseX = round(message.pin_base_x, 5)
     fiberWidth = 0.222  # not sure we can or need to support this.
-    loopWidth = round((message.bb_maxY - message.bb_minY), 5)
-    boxMinX = round(message.bb_minX, 5)
-    boxMaxX = round(message.bb_maxX, 5)
-    boxMinY = round(message.bb_minY, 5)
-    boxMaxY = round(message.bb_maxY, 5)
+    loopWidth = round((message.loop_bb_maxY - message.loop_bb_minY), 5)
+    boxMinX = round(message.loop_bb_minX, 5)
+    boxMaxX = round(message.loop_bb_maxX, 5)
+    boxMinY = round(message.loop_bb_minY, 5)
+    boxMaxY = round(message.loop_bb_maxY, 5)
     # need to double check that this is correct, and what it is used for.
-    loopWidthX = round((message.bb_maxX - message.bb_minX), 5)
-    if message.top_classification == 'mitegen':
+    loopWidthX = round((message.loop_bb_maxX - message.loop_bb_minX), 5)
+    if message.loop_top_classification == 'mitegen':
         isMicroMount = 1
     else:
         isMicroMount = 0
-    loopClass = message.top_classification
-    loopScore = round(message.top_score, 5)
+    loopClass = message.loop_top_classification
+    loopScore = round(message.loop_top_score, 5)
 
     for ao in activeOps:
         if ao.operation_name == 'testAutoML':
             result = [
                 message.image_key,
-                message.top_score,
-                message.top_bb,
-                message.top_classification,
-                message.top_score,
+                message.loop_top_score,
+                message.loop_top_bb,
+                message.loop_top_classification,
+                message.loop_top_score,
             ]
             msg = ' '.join(map(str, result))
             _logger.info(f'SEND TO DCSS: {msg}')
