@@ -523,7 +523,7 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
         for i in range(5):
             thing = message.get_detection_class_as_text(i)
             score = message.get_score(i)
-            _logger.spam(f'INFERENCE RESULT #{i} IS A: {thing} SCORE: {message.get_score(i)}')
+            _logger.debug(f'INFERENCE RESULT #{i} IS A: {thing: <8} SCORE: {message.get_score(i)}')
             if thing == 'pin' and message.pin_num is None:
                 message.pin_num = i
             elif (thing == 'mitegen' or thing == 'nylon') and message.loop_num is None:
