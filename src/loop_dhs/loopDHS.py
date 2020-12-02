@@ -509,6 +509,7 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
     # ==============================================================
 
     # AutoML results filtering.
+    # fail immediatly if score for top object is below threshold.
     if message.get_score(0) < context.config.automl_thhreshold:
         _logger.warning(
             f'TOP AUTOML SCORE IS BELOW {context.config.automl_thhreshold} THRESHOLD: {message.get_score(0)}'
@@ -530,12 +531,14 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
             elif (thing == 'mitegen' or thing == 'nylon') and message.loop_num is None:
                 _logger.info(f'INFERENCE RESULT #{i} IS A: {thing: <8} SCORE: {score}')
                 message.loop_num = i
-            else:
-                _logger.warning(f'NO PIN OR LOOP IN TOP 5 AUTOML RESULTS. SETTING TO 0')
-                _logger.warning(f'INFERENCE RESULT #{i} IS A: {thing: <8} SCORE: {score}')
-                message.pin_num = 0
-                message.loop_num = 0
 
+        if message.loop_num is None:
+            _logger.warning(f'NO LOOP IN TOP 5 AUTOML RESULTS. SETTING TO 0')
+            message.loop_num = 0
+
+        if message.pin_num is None:
+            _logger.warning(f'NO PIN IN TOP 5 AUTOML RESULTS. SETTING TO 0')
+            message.pin_num = 0
 
     # Do the maths on AutoML response values.
     tipX = round(message.loop_bb_maxX, 5)
