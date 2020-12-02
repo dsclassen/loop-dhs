@@ -516,6 +516,9 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
         )
         status = 'failed'
         result = ['no loop or pin detected, AutoML score: ', message.get_score(0)]
+        # need to set these values or we have problems below when getting loop params.
+        message.pin_num = 0
+        message.loop_num = 0
     else:
         status = 'normal'
         result = []
@@ -526,10 +529,10 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
             score = message.get_score(i)
             #_logger.debug(f'INFERENCE RESULT #{i} IS A: {thing: <8} SCORE: {score}')
             if thing == 'pin' and message.pin_num is None:
-                _logger.info(f'INFERENCE RESULT #{i} IS A: {thing: <8} SCORE: {score}')
+                _logger.info(f'AUTOML RESULT #{i} IS A: {thing: <8} SCORE: {score}')
                 message.pin_num = i
             elif (thing == 'mitegen' or thing == 'nylon') and message.loop_num is None:
-                _logger.info(f'INFERENCE RESULT #{i} IS A: {thing: <8} SCORE: {score}')
+                _logger.info(f'AUTOML RESULT #{i} IS A: {thing: <8} SCORE: {score}')
                 message.loop_num = i
 
         if message.loop_num is None:
