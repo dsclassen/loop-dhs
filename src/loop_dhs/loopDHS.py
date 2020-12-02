@@ -529,7 +529,9 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
             elif (thing == 'mitegen' or thing == 'nylon') and message.loop_num is None:
                 message.loop_num = i
             else:
-                pass
+                _logger.warning(f'NO PIN OR LOOP IN TOP 5 AUTOML RESULTS. SETTING TO 0')
+                message.pin_num = 0
+                message.loop_num = 0
 
 
     # Do the maths on AutoML response values.
