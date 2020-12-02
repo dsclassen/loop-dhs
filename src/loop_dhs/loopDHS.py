@@ -523,13 +523,16 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
         for i in range(5):
             thing = message.get_detection_class_as_text(i)
             score = message.get_score(i)
-            _logger.debug(f'INFERENCE RESULT #{i} IS A: {thing: <8} SCORE: {score}')
+            #_logger.debug(f'INFERENCE RESULT #{i} IS A: {thing: <8} SCORE: {score}')
             if thing == 'pin' and message.pin_num is None:
+                _logger.info(f'INFERENCE RESULT #{i} IS A: {thing: <8} SCORE: {score}')
                 message.pin_num = i
             elif (thing == 'mitegen' or thing == 'nylon') and message.loop_num is None:
+                _logger.info(f'INFERENCE RESULT #{i} IS A: {thing: <8} SCORE: {score}')
                 message.loop_num = i
             else:
                 _logger.warning(f'NO PIN OR LOOP IN TOP 5 AUTOML RESULTS. SETTING TO 0')
+                _logger.warning(f'INFERENCE RESULT #{i} IS A: {thing: <8} SCORE: {score}')
                 message.pin_num = 0
                 message.loop_num = 0
 
