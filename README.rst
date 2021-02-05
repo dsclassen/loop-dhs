@@ -10,8 +10,10 @@ Description
 
 The loopDHS provides loop detection and classification functionality in support of fully automated macromolecular crystallography data collection.
 
+Documentation
+=============
 
-
+`Documentaion <https://loop-dhs.readthedocs.io/>`_
 
 ....
 
