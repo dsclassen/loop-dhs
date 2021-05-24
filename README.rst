@@ -2,6 +2,8 @@
    :target: https://loop-dhs.readthedocs.io/en/latest/?badge=latest
    :alt: Documentation Status
 
+.. image:: https://img.shields.io/github/v/tag/dsclassen/loop-dhs   :alt: GitHub tag (latest by date)
+
 ========
 loop-dhs
 ========
