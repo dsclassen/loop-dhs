@@ -4,6 +4,9 @@ Installation
 
 loop-dhs is not a standalone software project. It is designed to work in conjunction with `DCSS`_ Control system, a properly configured `AXIS Video`_ server, and an edge-deployed Google `AutoML`_ inference model running on a local docker instance.
 
+.. image:: images/schematic.png
+   :width 600
+
 Dependencies
 ------------
 
