@@ -16,5 +16,5 @@ Documentation
 `Documentaion <https://loop-dhs.readthedocs.io/>`_
 
 .. image:: https://readthedocs.org/projects/loop-dhs/badge/?version=latest
-:target: https://loop-dhs.readthedocs.io/en/latest/?badge=latest
-:alt: Documentation Status
+   :target: https://loop-dhs.readthedocs.io/en/latest/?badge=latest
+   :alt: Documentation Status
