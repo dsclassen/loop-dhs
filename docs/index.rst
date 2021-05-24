@@ -29,7 +29,8 @@ Contents
 .. toctree::
    :maxdepth: 2
 
-   Overview <readme>
+   Installation <install>
+   Module Reference <api/modules>
    License <license>
    Authors <authors>
    Changelog <changelog>

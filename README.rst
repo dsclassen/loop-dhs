@@ -3,19 +3,14 @@ loop-dhs
 ========
 
 
-Distributed Hardware Server for loop detection and classification.
-
+loop-dhs provides a command line tool **loopDHS** which is a python-based Distributed Hardware Server (DHS) built on the `pydhsfw <https://github.com/tetrahedron-technologies/pydhsfw>`_ package.
 
 Description
 ===========
 
-A longer description of your project goes here...
+The loopDHS provides loop detection and classification functionality in support of fully automated macromolecular crystallography data collection.
 
+Documentation
+=============
 
-.. _pyscaffold-notes:
-
-Note
-====
-
-This project has been set up using PyScaffold 4.0.1. For details and usage
-information on PyScaffold see https://pyscaffold.org/.
+`Documentaion <https://loop-dhs.readthedocs.io/>`_

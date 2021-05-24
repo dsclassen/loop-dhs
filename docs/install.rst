@@ -7,6 +7,8 @@ loop-dhs is not a standalone software project. It is designed to work in conjunc
 .. image:: images/schematic.png
    :width: 600
 
+This shows a conceptual schematic of how the various pieces of hardware and software are configured at beamline 8.3.1 to support loopDHS.
+
 Dependencies
 ------------
 
@@ -19,19 +21,26 @@ Install
 
 Checkout the code from `GitHub <https://github.com/dsclassen/loop-dhs>`_::
 
-    $ git clone git@github.com:dsclassen/loop-dhs.git
-    $ cd loop-dhs
+   $ git clone git@github.com:dsclassen/loop-dhs.git
+   $ cd loop-dhs
 
 Setup and source a python virtualenv::
 
-    $ virtualenv -p python3.8 .env
-    $ source .env/bin/activate
-    $ pip install --upgrade pip
+   $ virtualenv -p python3.8 .env
+   $ source .env/bin/activate
+   $ pip install --upgrade pip
 
 Install into local python environment::
 
-    $ pip install -e .
+   $ pip install -e .
 
+.. note::
+   I have not yet figured out how to add pydhsfw to the install dependencies in setup.cfg. You need to install pydhsfw dependency manually for now.
+
+   $ cd some_working_dir
+   $ git clone git@github.com:tetrahedron-technologies/pydhsfw.git
+   $ cd pydhsfw
+   $ pip install -e .
 
 .. _AXIS Video: https://www.axis.com/en-us/products/video-encoders
 .. _pydhsfw: https://github.com/tetrahedron-technologies/pydhsfw
