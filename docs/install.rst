@@ -35,7 +35,9 @@ Install into local python environment::
    $ pip install -e .
 
 .. note::
-   I have not yet figured out how to add pydhsfw to the install dependencies in setup.cfg. You need to install pydhsfw dependency manually for now.
+   I have not yet figured out how to add ``pydhsfw`` to the install dependencies in setup.cfg. You need to install pydhsfw dependency manually for now.
+
+Install `pydhsfw`_ manually for now::
 
    $ cd some_working_dir
    $ git clone git@github.com:tetrahedron-technologies/pydhsfw.git
