@@ -58,7 +58,7 @@ if platform.system() == 'Darwin':
 
 
 class LoopImageSet:
-    """Class to hold the last set of JPEG images acquired via collectLoopImages operation."""
+    """Class to hold the last set of JPEG images acquired via collectLoopImages operation. """
 
     def __init__(self):
         self.images = []
