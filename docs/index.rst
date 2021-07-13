@@ -4,11 +4,9 @@ loop-dhs
 
 This is the documentation of **loop-dhs**.
 
-Contents
-========
-
 .. toctree::
    :maxdepth: 2
+   :caption: Contents
 
    Installation <install>
    Module Reference <api/modules>
