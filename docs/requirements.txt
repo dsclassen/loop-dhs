@@ -6,3 +6,4 @@ matplotlib
 scipy
 requests
 pyyaml
+git+https://github.com/tetrahedron-technologies/pydhsfw.git#egg=master
