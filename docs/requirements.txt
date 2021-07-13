@@ -1,1 +1,7 @@
+dotty-dict
 coloredlogs
+verboselogs
+opencv-python-headless
+matplotlib
+scipy
+requests
