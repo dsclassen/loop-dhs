@@ -58,15 +58,24 @@ if platform.system() == 'Darwin':
 
 
 class LoopImageSet:
-    """Class to hold the last set of JPEG images acquired via collectLoopImages operation. """
+    """Class to hold set of JPEG images acquired via collectLoopImages operation.
+
+    Attributes:
+        images (list): List of images sent from AXIS video server
+        results (list): List of results from AutoML
+
+    """
 
     def __init__(self):
+        """Constructor method
+        """
         self.images = []
         self.results = []
         self._number_of_images = None
 
     def add_image(self, image: bytes):
-        """Add a jpeg image to the list of images."""
+        """Add a jpeg image to the list of images.
+        """
         self.images.append(image)
         self._number_of_images = len(self.images)
 
