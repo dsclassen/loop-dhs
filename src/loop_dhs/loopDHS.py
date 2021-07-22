@@ -580,6 +580,7 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                     ao.operation_name, ao.operation_handle, status, msg
                 )
             )
+
         elif ao.operation_name == 'getLoopTip':
             if status == 'normal':
                 result = [tipX, tipY]
@@ -592,6 +593,7 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                     ao.operation_name, ao.operation_handle, status, msg
                 )
             )
+
         elif ao.operation_name == 'getLoopInfo':
             if status == 'normal':
                 result = [
@@ -618,8 +620,8 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                     ao.operation_name, ao.operation_handle, status, msg
                 )
             )
-        elif ao.operation_name == 'collectLoopImages':
 
+        elif ao.operation_name == 'collectLoopImages':
             # Increment AutoML responses received.
             ao.state.automl_responses_received += 1
             received = ao.state.automl_responses_received
@@ -629,12 +631,11 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
             collect = context.state.collect_images
 
             # Send Operation Update message.
-            if received < expected_frames and collect is True:
-                _logger.info(f'OPERATION UPDATE SENT TO AutoML: {sent} \
-                               RECEIVED FROM AutoML: {received} \
-                               COLLECT: {collect}')
+            #if received < expected_frames and collect is True:
+            if received < expected_frames:
+                _logger.info(f'OPERATION UPDATE SENT TO AutoML: {sent} RECEIVED FROM AutoML: {received} COLLECT: {collect} INDEX: {index}')
 
-                # adding extra return fields here may have implications in loopFast.tcl
+                # adding extra result fields here may have implications in loopFast.tcl
                 result = [
                     'LOOP_INFO',
                     index,
@@ -718,18 +719,11 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                         ao.operation_name, ao.operation_handle, 'normal', 'done'
                     )
                 )
-                # moved from stopCollectLoopImages
-                # context.get_connection('jpeg_receiver_conn').disconnect()
-                # time.sleep(2)
-
-            # Here if images received from AutoML is equal to the number sent,
-            #  BUT we are still in a "collect" mode. i.e. context.state.collect_images = True
-            # This would indicate the AutoML is able to keep up with the images
-            #  being ingested by the JPEG receiver port.
+            # Not sure we can ever get to this bit of code
             else:
-                _logger.error('===================================================================')
-                _logger.error(f'SENT: {sent} RECEIVED: {received} COLLECT: {collect}')
-                _logger.error('===================================================================')
+                _logger.warning('===================================================================')
+                _logger.warning(f'SENT: {sent} RECEIVED: {received} COLLECT: {collect}')
+                _logger.warning('===================================================================')
                 # context.get_connection('jpeg_receiver_conn').disconnect()
                 # time.sleep(2)
 
@@ -1089,11 +1083,12 @@ def configure_logging(verbosity):
 
     logdir = 'logs'
 
+
     if not os.path.exists(logdir):
         os.makedirs(logdir)
 
     logfile = os.path.join(logdir, Path(__file__).stem + '.log')
-    handler = RotatingFileHandler(logfile, maxBytes=100000, backupCount=5)
+    handler = RotatingFileHandler(logfile, maxBytes=100000, backupCount=50)
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
