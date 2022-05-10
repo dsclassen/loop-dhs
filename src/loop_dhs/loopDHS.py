@@ -27,6 +27,7 @@ from scipy.optimize import curve_fit, minimize_scalar
 from scipy.optimize import differential_evolution
 import numpy as np
 import warnings
+from datetime import datetime as dt
 from dotty_dict.dotty_dict import Dotty
 from datetime import datetime
 from pathlib import Path
@@ -97,6 +98,13 @@ class LoopDHSConfig(Dotty):
 
     def __init__(self, conf_dict: dict):
         super().__init__(conf_dict)
+        self.timestamped_debug_dir = None
+
+    def make_debug_dir(self):
+        now = dt.now().strftime("%Y-%m-%d-%H%M%S")
+        self.timestamped_debug_dir = os.path.join(self['loopdhs.debug_dir'], now)
+        os.makedirs(self.timestamped_debug_dir)
+
 
     @property
     def dcss_url(self):
@@ -133,8 +141,8 @@ class LoopDHSConfig(Dotty):
         return self['loopdhs.save_image_files']
 
     @property
-    def save_image_dir(self):
-        return self['loopdhs.save_image_dir']
+    def debug_dir(self):
+        return self['loopdhs.debug_dir']
 
     @property
     def log_dir(self):
@@ -275,22 +283,22 @@ def dhs_init(message: DhsInit, context: DhsContext):
     context.state = LoopDHSState()
 
     if context.config.save_images:
-        if not os.path.exists(context.config.save_image_dir):
-            os.makedirs(context.config.save_image_dir)
+        context.config.make_debug_dir()
 
     _logger.success('=============================================')
     _logger.success('Initializing DHS')
-    _logger.success(f'Start Time: {datetime.now()}')
-    _logger.success(f'Logging level: {loglevel_name}')
-    _logger.success(f'Log File: {logfile}')
-    _logger.success(f'Config file: {conf_file}')
-    _logger.success(f'Initializing: {context.config["DHS"]}')
-    _logger.success(f'DCSS HOST: {context.config["dcss.host"]} PORT: {context.config["dcss.port"]}')
-    _logger.success(f'AUTOML HOST: {context.config["loopdhs.automl.host"]} \
-                      PORT: {context.config["loopdhs.automl.port"]}')
+    _logger.success(f'Start Time:         {datetime.now()}')
+    _logger.success(f'Logging level:      {loglevel_name}')
+    _logger.success(f'Log File:           {logfile}')
+    _logger.success(f'Config file:        {conf_file}')
+    _logger.success(f'Initializing:       {context.config["DHS"]}')
+    _logger.success(f'DCSS HOST:          {context.config["dcss.host"]}')
+    _logger.success(f'     PORT:          {context.config["dcss.port"]}')
+    _logger.success(f'AUTOML HOST:        {context.config["loopdhs.automl.host"]}')
+    _logger.success(f'       PORT:        {context.config["loopdhs.automl.port"]}')
     _logger.success(f'JPEG RECEIVER PORT: {context.config["loopdhs.jpeg_receiver.port"]}')
-    _logger.success(f'AXIS HOST: {context.config["loopdhs.axis.host"]} \
-                      PORT: {context.config["loopdhs.axis.port"]}')
+    _logger.success(f'AXIS HOST:          {context.config["loopdhs.axis.host"]}')
+    _logger.success(f'     PORT:          {context.config["loopdhs.axis.port"]}')
     _logger.success('=============================================')
 
 
@@ -394,14 +402,14 @@ def collect_loop_images(message: DcssStoHStartOperation, context: DcssContext):
 
     # make a RESULTS directory for this instance of the operation.
     if context.config.save_images:
-        if os.path.exists(context.config.save_image_dir):
+        if os.path.exists(context.config.timestamped_debug_dir):
             opDir = ''.join([opName, opHandle.replace('.', '_')])
-            operationResultsDir = os.path.join(context.config.save_image_dir, opDir)
+            operationResultsDir = os.path.join(context.config.timestamped_debug_dir, opDir)
             boundingBoxDir = os.path.join(operationResultsDir, 'bboxes')
-            # how to set results_dir in active op?
+
             activeOp = context.get_active_operations(operation_name='collectLoopImages')
             activeOp[0].state.results_dir = operationResultsDir
-            #
+
             os.makedirs(operationResultsDir)
             os.makedirs(boundingBoxDir)
             _logger.debug(f'SAVING RAW JPEG IMAGES TO: {operationResultsDir}')
@@ -711,6 +719,8 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                                           pin_upper_left,
                                           pin_lower_right,
                                           output_dir,
+                                          str(message.loop_top_score),
+                                          message.loop_top_classification,
                                           )
                     else:
                         _logger.warning(f'DID NOT FIND IMAGE: {file_to_adorn}')
@@ -736,10 +746,9 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                 # context.get_connection('jpeg_receiver_conn').disconnect()
                 # time.sleep(2)
 
-    # ==============================================================
     activeOps = context.get_active_operations()
     _logger.debug(f'Active operations post-completed={activeOps}')
-    # ==============================================================
+
 
 
 @register_message_handler('jpeg_receiver_image_post_request')
@@ -782,9 +791,6 @@ def jpeg_receiver_image_post_request(
     else:
         _logger.warning('RECEVIED JPEG, BUT NOT DOING ANYTHING WITH IT. \
                          no active collectLoopImages operation.')
-        # this doesn't seem to do anything.???
-        # context.get_connection('jpeg_receiver_conn').disconnect()
-        # time.sleep(2)
 
 
 @register_message_handler('axis_image_response')
@@ -841,6 +847,8 @@ def draw_bounding_box(
     pin_upper_left_corner: list,
     pin_lower_right_corner: list,
     output_dir: str,
+    automl_score: str,
+    automl_class: str,
 ):
     """Draw the AutoML bounding box and loop tip crosshair overlaid on a JPEG image."""
     image = cv2.imread(file_to_adorn)
@@ -886,6 +894,28 @@ def draw_bounding_box(
     cross_hair_vert = [(tipX, tipY - crosshair_size), (tipX, tipY + crosshair_size)]
     image = cv2.line(image, cross_hair_horz[0], cross_hair_horz[1], green, thickness)
     image = cv2.line(image, cross_hair_vert[0], cross_hair_vert[1], green, thickness)
+    font                   = cv2.FONT_HERSHEY_SIMPLEX
+    automl_score_pos       = (50,50)
+    automl_class_pos       = (50,100)
+    fontScale              = 1
+    fontColor              = (0,0,255)
+    lineType               = 2
+
+    cv2.putText(image, automl_score,
+        automl_score_pos,
+        font,
+        fontScale,
+        fontColor,
+        thickness,
+        lineType)
+    cv2.putText(image, automl_class,
+        automl_class_pos,
+        font,
+        fontScale,
+        fontColor,
+        thickness,
+        lineType)
+
 
     output_filename = 'automl_' + os.path.basename(file_to_adorn)
     outfile = os.path.join(output_dir, output_filename)
