@@ -529,28 +529,35 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
 
     # AutoML results filtering.
     # fail immediatly if score for top object is below threshold.
+    # I think this happens if jpeg is completely blank.
     if message.get_score(0) < context.config.automl_thhreshold:
-        _logger.warning(f'TOP AUTOML SCORE IS BELOW {context.config.automl_thhreshold} \
-                        THRESHOLD: {message.get_score(0)}')
+        _logger.warning(f'TOP AUTOML SCORE IS BELOW {context.config.automl_thhreshold}'
+                        f'THRESHOLD: {message.get_score(0)}')
         status = 'failed'
         result = ['no loop or pin detected, AutoML score: ', message.get_score(0)]
         # need to set these values or we have problems below when getting loop params.
         message.pin_num = 0
         message.loop_num = 0
+
     else:
         status = 'normal'
         result = []
-        # look at the top 5 results for a pin and some sort of loop object.
+        # look at the top 5 results for a pin and a loop object.
         # 5 is arbitrary.
         for i in range(5):
             thing = message.get_detection_class_as_text(i)
             score = message.get_score(i)
-            # _logger.debug(f'INFERENCE RESULT #{i} IS A: {thing: <8} SCORE: {score}')
             if thing == 'pin' and message.pin_num is None:
                 _logger.info(f'AUTOML RESULT #{i} IS A: {thing: <8} SCORE: {score}')
                 message.pin_num = i
             elif (thing == 'mitegen' or thing == 'nylon') and message.loop_num is None:
-                _logger.info(f'AUTOML RESULT #{i} IS A: {thing: <8} SCORE: {score}')
+                if score < context.config.automl_thhreshold:
+                    status = 'normal'
+                    _logger.warning(f'AUTOML RESULT #{i} IS A: {thing: <8} SCORE: {score} '
+                                    f'BELOW TH: {context.config.automl_thhreshold}')
+                else:
+                    status = 'normal'
+                    _logger.info(f'AUTOML RESULT #{i} IS A: {thing: <8} SCORE: {score}')
                 message.loop_num = i
 
         if message.loop_num is None:
@@ -562,7 +569,7 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
             message.pin_num = 0
 
     # Do the maths on AutoML response values.
-    tipX = round(message.loop_bb_maxX, 5)
+    tipX = round(message.loop_bb_maxX, 4)
     # This is not ideal, but for now the best I can come up with is to add minY to 1/2 the loopWidth
     tipY = round(message.loop_bb_minY + ((message.loop_bb_maxY - message.loop_bb_minY) / 2), 5)
     pinBaseX = round(message.pin_base_x, 5)
@@ -630,6 +637,7 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                 ]
             elif status == 'failed':
                 pass
+
             msg = ' '.join(map(str, result))
             _logger.info(f'SEND TO DCSS: {msg}')
             context.get_connection('dcss_conn').send(
@@ -650,7 +658,7 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
             # Send Operation Update message.
             #if received < expected_frames and collect is True:
             if received < expected_frames:
-                _logger.info(f'OPERATION UPDATE SENT TO AutoML: {sent} RECEIVED FROM AutoML: {received} COLLECT: {collect} INDEX: {index}')
+                _logger.info(f'OPERATION UPDATE - SENT TO AutoML: {sent} RECEIVED FROM AutoML: {received} COLLECT: {collect} INDEX: {index}')
 
                 # adding extra result fields here may have implications in loopFast.tcl
                 result = [
@@ -673,7 +681,7 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                 ]
                 msg = ' '.join(map(str, result))
                 ao.state.loop_images.add_results(result)
-                _logger.info(f'OPERATION UPDATE SEND TO DCSS: {msg}')
+                _logger.debug(f'OPERATION UPDATE SEND TO DCSS: {msg}')
                 context.get_connection('dcss_conn').send(
                     DcssHtoSOperationUpdate(ao.operation_name, ao.operation_handle, msg)
                 )
@@ -686,7 +694,7 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                     if message.loop_num is not None:
                         loop_upper_left = [message.loop_bb_minX, message.loop_bb_minY]
                         loop_lower_right = [message.loop_bb_maxX, message.loop_bb_maxY]
-                        loop_tip = [tipX, tipY]
+                        loop_tip = [round(tipX, 3), round(tipY, 3)]
                     else:
                         loop_upper_left = [0.01, 0.01]
                         loop_lower_right = [0.02, 0.02]
@@ -699,13 +707,13 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                         pin_upper_left = [0.03, 0.03]
                         pin_lower_right = [0.04, 0.04]
 
-                    _logger.info(
-                        f'DRAW LOOP BOUNDING BOX FOR IMAGE: {index} \
-                          UL: {loop_upper_left} LR: {loop_lower_right} TIP: {loop_tip}'
+                    _logger.debug(
+                        f'DRAW LOOP BOUNDING BOX FOR IMAGE: {index}'
+                        f'UL: {loop_upper_left} LR: {loop_lower_right} TIP: {loop_tip}'
                     )
-                    _logger.info(
-                        f'DRAW PIN BOUNDING BOX FOR IMAGE: {index} \
-                          UL: {pin_upper_left} LR: {pin_lower_right}'
+                    _logger.debug(
+                        f'DRAW PIN BOUNDING BOX FOR IMAGE: {index}'
+                        f'UL: {pin_upper_left} LR: {pin_lower_right}'
                     )
 
                     axisfilename = 'loop_{:04}.jpeg'.format(index)
@@ -713,17 +721,18 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                     output_dir = os.path.join(ao.state.results_dir, 'bboxes')
                     if os.path.isfile(file_to_adorn):
                         draw_bounding_box(file_to_adorn,
-                                          loop_upper_left,
-                                          loop_lower_right,
-                                          loop_tip,
-                                          pin_upper_left,
-                                          pin_lower_right,
-                                          output_dir,
-                                          str(message.loop_top_score),
-                                          message.loop_top_classification,
-                                          )
+                                            loop_upper_left,
+                                            loop_lower_right,
+                                            loop_tip,
+                                            pin_upper_left,
+                                            pin_lower_right,
+                                            output_dir,
+                                            str(loopScore),
+                                            loopClass,
+                                            )
                     else:
                         _logger.warning(f'DID NOT FIND IMAGE: {file_to_adorn}')
+
 
             # Send Operation Complete message.
             elif received >= expected_frames:
@@ -743,13 +752,9 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                 _logger.warning('===================================================================')
                 _logger.warning(f'SENT: {sent} RECEIVED: {received} COLLECT: {collect}')
                 _logger.warning('===================================================================')
-                # context.get_connection('jpeg_receiver_conn').disconnect()
-                # time.sleep(2)
 
     activeOps = context.get_active_operations()
     _logger.debug(f'Active operations post-completed={activeOps}')
-
-
 
 @register_message_handler('jpeg_receiver_image_post_request')
 def jpeg_receiver_image_post_request(
@@ -836,7 +841,7 @@ def save_jpeg(image: bytes, index: int = None, save_dir: str = None):
     f = open(save_name, 'w+b')
     f.write(image)
     f.close()
-    _logger.info(f'SAVED JPEG IMAGE FILE: {save_name}')
+    _logger.debug(f'SAVED JPEG IMAGE FILE: {save_name}')
 
 
 def draw_bounding_box(
@@ -880,6 +885,9 @@ def draw_bounding_box(
         math.ceil(pin_lower_right_corner[1] * h),
     )
 
+    loop_w = round((loop_lower_right_corner[0] - loop_upper_left_corner[0]), 3)
+    loop_h = round((loop_lower_right_corner[1] - loop_upper_left_corner[1]), 3)
+
     # volor in BGR
     red = (0, 0, 255)
     green = (0, 255, 0)
@@ -888,39 +896,64 @@ def draw_bounding_box(
     # Line thickness in px
     thickness = 1
 
-    image = cv2.rectangle(image, loop_start_point, loop_end_point, red, thickness)
-    image = cv2.rectangle(image, pin_start_point, pin_end_point, magenta, thickness)
+    cv2.rectangle(image, loop_start_point, loop_end_point, red, thickness)
+    cv2.rectangle(image, pin_start_point, pin_end_point, magenta, thickness)
     cross_hair_horz = [(tipX - crosshair_size, tipY), (tipX + crosshair_size, tipY)]
     cross_hair_vert = [(tipX, tipY - crosshair_size), (tipX, tipY + crosshair_size)]
-    image = cv2.line(image, cross_hair_horz[0], cross_hair_horz[1], green, thickness)
-    image = cv2.line(image, cross_hair_vert[0], cross_hair_vert[1], green, thickness)
+    cv2.line(image, cross_hair_horz[0], cross_hair_horz[1], green, 2)
+    cv2.line(image, cross_hair_vert[0], cross_hair_vert[1], green, 2)
     font                   = cv2.FONT_HERSHEY_SIMPLEX
-    automl_score_pos       = (50,50)
-    automl_class_pos       = (50,100)
-    fontScale              = 1
-    fontColor              = (0,0,255)
+    fontScale              = 0.70
+    fontColor              = red
     lineType               = 2
 
-    cv2.putText(image, automl_score,
-        automl_score_pos,
-        font,
-        fontScale,
-        fontColor,
-        thickness,
-        lineType)
     cv2.putText(image, automl_class,
-        automl_class_pos,
+        (20,50),
         font,
         fontScale,
         fontColor,
         thickness,
         lineType)
-
+    cv2.putText(image, ("TH: " + automl_score),
+        (20,100),
+        font,
+        fontScale,
+        fontColor,
+        thickness,
+        lineType)
+    cv2.putText(image, ("tipX: " + str(tipX_frac)),
+        (240,50),
+        font,
+        fontScale,
+        green,
+        thickness,
+        lineType)
+    cv2.putText(image, ("tipY: " + str(tipY_frac)),
+        (240,100),
+        font,
+        fontScale,
+        green,
+        thickness,
+        lineType)
+    cv2.putText(image, ("loopW: " + str(loop_w)),
+        (450,50),
+        font,
+        fontScale,
+        red,
+        thickness,
+        lineType)
+    cv2.putText(image, ("loopH: " + str(loop_h)),
+        (450,100),
+        font,
+        fontScale,
+        red,
+        thickness,
+        lineType)
 
     output_filename = 'automl_' + os.path.basename(file_to_adorn)
     outfile = os.path.join(output_dir, output_filename)
     cv2.imwrite(outfile, image)
-    _logger.info(f'DRAW BOUNDING BOX: {outfile}')
+    _logger.debug(f'DRAW BOUNDING BOX: {outfile}')
 
 
 def save_loop_info(results_dir: str, images: LoopImageSet):
