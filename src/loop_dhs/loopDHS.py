@@ -656,9 +656,11 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
             collect = context.state.collect_images
 
             # Send Operation Update message.
-            #if received < expected_frames and collect is True:
+            # if received < expected_frames and collect is True:
             if received < expected_frames:
-                _logger.info(f'OPERATION UPDATE - SENT TO AutoML: {sent} RECEIVED FROM AutoML: {received} COLLECT: {collect} INDEX: {index}')
+                _logger.info(f'OPERATION UPDATE SENT TO AutoML: {sent} '
+                             f'RECEIVED FROM AutoML: {received} '
+                             f'COLLECT: {collect} INDEX: {index}')
 
                 # adding extra result fields here may have implications in loopFast.tcl
                 result = [
@@ -740,6 +742,7 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                 if context.config.save_images:
                     save_loop_info(ao.state.results_dir, ao.state.loop_images)
                     plot_loop_widths(ao.state.results_dir, ao.state.loop_images)
+                    plot_automl_scores(ao.state.results_dir, ao.state.loop_images)
                 context.state.rebox_images = ao.state.loop_images
                 _logger.info('SEND OPERATION COMPLETE TO DCSS')
                 context.get_connection('dcss_conn').send(
@@ -749,9 +752,11 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                 )
             # Not sure we can ever get to this bit of code
             else:
-                _logger.warning('===================================================================')
+                _logger.warning('=====================================================')
                 _logger.warning(f'SENT: {sent} RECEIVED: {received} COLLECT: {collect}')
-                _logger.warning('===================================================================')
+                _logger.warning('=====================================================')
+                # context.get_connection('jpeg_receiver_conn').disconnect()
+                # time.sleep(2)
 
     activeOps = context.get_active_operations()
     _logger.debug(f'Active operations post-completed={activeOps}')
@@ -1131,6 +1136,30 @@ def plot_loop_widths(results_dir: str, images: LoopImageSet):
     model_and_scatter_plot(graph_width, graph_height)
 
 
+def plot_automl_scores(results_dir: str, images: LoopImageSet):
+    indices = [e[1] for e in images.results]
+    scores = [e[14] for e in images.results]
+
+    def scatter_plot(graph_width, graph_height):
+        f = plt.figure(figsize=(graph_width / 100.0, graph_height / 100.0), dpi=100)
+        axes = f.add_subplot(111)
+
+        # raw data as a scatter plot
+        axes.scatter(indices, scores, color='black', marker='o', label='data')
+
+        axes.set_xlabel('Index')  # X axis data label
+        axes.set_ylabel('AutoML Score')  # Y axis data label
+        axes.legend(loc='best')
+
+        fn = 'plot_automl_scores.png'
+        results_plot = os.path.join(results_dir, fn)
+        f.savefig(results_plot)
+
+    graph_width = 800
+    graph_height = 600
+    scatter_plot(graph_width, graph_height)
+
+
 def configure_logging(verbosity):
 
     loglevel = 20
@@ -1154,7 +1183,6 @@ def configure_logging(verbosity):
     # verboselogs.install()
 
     logdir = 'logs'
-
 
     if not os.path.exists(logdir):
         os.makedirs(logdir)
