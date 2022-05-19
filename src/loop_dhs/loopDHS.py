@@ -23,6 +23,8 @@ import math
 import csv
 import matplotlib
 from matplotlib import pyplot as plt
+import numpy as np
+from scipy import stats
 from scipy.optimize import curve_fit, minimize_scalar
 from scipy.optimize import differential_evolution
 import numpy as np
@@ -49,6 +51,13 @@ from pydhsfw.jpeg_receiver import JpegReceiverImagePostRequestMessage
 from pydhsfw.axis import AxisImageRequestMessage, AxisImageResponseMessage
 
 from loop_dhs import __version__
+from loop_dhs.automl_image import AutoMLImage
+from loop_dhs.loop_image import CollectLoopImageState
+from loop_dhs.loop_dhs_config import (
+    LoopDHSState,
+    LoopImageSet,
+    LoopDHSConfig,
+    )
 
 _logger = verboselogs.VerboseLogger('loopDHS')
 
@@ -57,183 +66,6 @@ _logger = verboselogs.VerboseLogger('loopDHS')
 if platform.system() == 'Darwin':
     matplotlib.use('Agg')
 
-
-class LoopImageSet:
-    """Class to hold set of JPEG images acquired via collectLoopImages operation.
-
-    Attributes:
-        images (list): List of images sent from AXIS video server
-        results (list): List of results from AutoML
-
-    """
-
-    def __init__(self):
-        """Constructor method
-        """
-        self.images = []
-        self.results = []
-        self._number_of_images = None
-
-    def add_image(self, image: bytes):
-        """Add a jpeg image to the list of images.
-        """
-        self.images.append(image)
-        self._number_of_images = len(self.images)
-
-    def add_results(self, result: list):
-        """
-        Add the AutoML results to a list for use in reboxLoopImage
-        loop_info stored as python list so this is a list of lists.
-        """
-        self.results.append(result)
-
-    @property
-    def number_of_images(self) -> int:
-        """Get the number of images in the image list"""
-        return self._number_of_images
-
-
-class LoopDHSConfig(Dotty):
-    """Class to wrap DHS configuration settings."""
-
-    def __init__(self, conf_dict: dict):
-        super().__init__(conf_dict)
-        self.timestamped_debug_dir = None
-
-    def make_debug_dir(self):
-        now = dt.now().strftime("%Y-%m-%d-%H%M%S")
-        self.timestamped_debug_dir = os.path.join(self['loopdhs.debug_dir'], now)
-        os.makedirs(self.timestamped_debug_dir)
-
-
-    @property
-    def dcss_url(self):
-        return 'dcss://' + str(self['dcss.host']) + ':' + str(self['dcss.port'])
-
-    @property
-    def automl_url(self):
-        return (
-            'http://'
-            + str(self['loopdhs.automl.host'])
-            + ':'
-            + str(self['loopdhs.automl.port'])
-        )
-
-    @property
-    def jpeg_receiver_url(self):
-        return 'http://localhost:' + str(self['loopdhs.jpeg_receiver.port'])
-
-    @property
-    def axis_url(self):
-        return (
-            'http://'
-            + str(self['loopdhs.axis.host'])
-            + ':'
-            + str(self['loopdhs.axis.port'])
-        )
-
-    @property
-    def axis_camera(self):
-        return self['loopdhs.axis.camera']
-
-    @property
-    def save_images(self):
-        return self['loopdhs.save_image_files']
-
-    @property
-    def debug_dir(self):
-        return self['loopdhs.debug_dir']
-
-    @property
-    def log_dir(self):
-        return self['loopdhs.log_dir']
-
-    @property
-    def automl_thhreshold(self):
-        return self['loopdhs.automl.threshold']
-
-    @property
-    def osci_delta(self):
-        return self['loopdhs.osci_delta']
-
-    @property
-    def osci_time(self):
-        return self['loopdhs.osci_time']
-
-    @property
-    def video_fps(self):
-        return self['loopdhs.video_fps']
-
-
-class LoopDHSState:
-    """Class to hold DHS state info."""
-
-    def __init__(self):
-        self._rebox_images = None
-        self._collect_images = False
-
-    @property
-    def rebox_images(self) -> LoopImageSet:
-        return self._rebox_images
-
-    @rebox_images.setter
-    def rebox_images(self, images: LoopImageSet):
-        self._rebox_images = images
-
-    @property
-    def collect_images(self) -> bool:
-        return self._collect_images
-
-    @collect_images.setter
-    def collect_images(self, collect: bool):
-        self._collect_images = collect
-
-
-class CollectLoopImageState:
-    """Class to store state and objects for a single collectLoopImages operation."""
-
-    def __init__(self):
-        self._loop_images = LoopImageSet()
-        self._image_index = 0
-        self._automl_responses_received = 0
-        self._results_dir = None
-        self._done = False
-
-    @property
-    def loop_images(self):
-        return self._loop_images
-
-    @property
-    def image_index(self) -> int:
-        return self._image_index
-
-    @image_index.setter
-    def image_index(self, idx: int):
-        self._image_index = idx
-
-    @property
-    def automl_responses_received(self) -> int:
-        return self._automl_responses_received
-
-    @automl_responses_received.setter
-    def automl_responses_received(self, idx: int):
-        self._automl_responses_received = idx
-
-    @property
-    def results_dir(self) -> str:
-        return self._results_dir
-
-    @results_dir.setter
-    def results_dir(self, dir: str):
-        self._results_dir = dir
-
-    @property
-    def done(self) -> bool:
-        return self._done
-
-    @done.setter
-    def done(self, done_state: bool):
-        self._done = done_state
 
 
 @register_message_handler('dhs_init')
@@ -531,62 +363,64 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
     # fail immediatly if score for top object is below threshold.
     # I think this happens if jpeg is completely blank.
     if message.get_score(0) < context.config.automl_thhreshold:
-        _logger.warning(f'TOP AUTOML SCORE IS BELOW {context.config.automl_thhreshold}'
-                        f'THRESHOLD: {message.get_score(0)}')
+        _logger.warning(f'AUTOML SCORE: {message.get_score(0)} '
+                        f'BELOW THRESHOLD: {context.config.automl_thhreshold}')
         status = 'failed'
         result = ['no loop or pin detected, AutoML score: ', message.get_score(0)]
         # need to set these values or we have problems below when getting loop params.
-        message.pin_num = 0
-        message.loop_num = 0
+        # message.pin_num = 0
+        # message.loop_num = 0
+        pass
 
     else:
-        status = 'normal'
-        result = []
+        # status = None
+        # result = []
         # look at the top 5 results for a pin and a loop object.
-        # 5 is arbitrary.
+        # 5 is arbitrary. This code should find the highest scoring pin and loop.
         for i in range(5):
-            thing = message.get_detection_class_as_text(i)
+            object = message.get_detection_class_as_text(i)
             score = message.get_score(i)
-            if thing == 'pin' and message.pin_num is None:
-                _logger.info(f'AUTOML RESULT #{i} IS A: {thing: <8} SCORE: {score}')
+            
+            if object == 'pin' and message.pin_num is None:
                 message.pin_num = i
-            elif (thing == 'mitegen' or thing == 'nylon') and message.loop_num is None:
+                _logger.success(f'AUTOML RESULT #{i} IS A: {object: <8} SCORE: {score}')
+                
+            elif (object == 'mitegen' or object == 'nylon') and message.loop_num is None:
+                message.loop_num = i
                 if score < context.config.automl_thhreshold:
-                    status = 'normal'
-                    _logger.warning(f'AUTOML RESULT #{i} IS A: {thing: <8} SCORE: {score} '
+                    _logger.warning(f'AUTOML RESULT #{i} IS A: {object: <8} SCORE: {score} '
                                     f'BELOW TH: {context.config.automl_thhreshold}')
                 else:
-                    status = 'normal'
-                    _logger.info(f'AUTOML RESULT #{i} IS A: {thing: <8} SCORE: {score}')
-                message.loop_num = i
+                    _logger.success(f'AUTOML RESULT #{i} IS A: {object: <8} SCORE: {score}')
+            _logger.spam(f"{i} {object=} {score=}")
 
+        # if no loop found in top 5 results
         if message.loop_num is None:
             _logger.warning('NO LOOP IN TOP 5 AUTOML RESULTS. SETTING TO 0')
             message.loop_num = 0
 
-        if message.pin_num is None:
-            _logger.warning('NO PIN IN TOP 5 AUTOML RESULTS. SETTING TO 0')
-            message.pin_num = 0
+        # if message.pin_num is None:
+        #     _logger.warning('NO PIN IN TOP 5 AUTOML RESULTS. SETTING TO 0')
+        #     message.pin_num = 0
 
-    # Do the maths on AutoML response values.
-    tipX = round(message.loop_bb_maxX, 4)
-    # This is not ideal, but for now the best I can come up with is to add minY to 1/2 the loopWidth
-    tipY = round(message.loop_bb_minY + ((message.loop_bb_maxY - message.loop_bb_minY) / 2), 5)
-    pinBaseX = round(message.pin_base_x, 5)
-    fiberWidth = 0.222  # not sure we can or need to support this.
-    loopWidth = round((message.loop_bb_maxY - message.loop_bb_minY), 5)
-    boxMinX = round(message.loop_bb_minX, 5)
-    boxMaxX = round(message.loop_bb_maxX, 5)
-    boxMinY = round(message.loop_bb_minY, 5)
-    boxMaxY = round(message.loop_bb_maxY, 5)
-    # need to double check that this is correct, and what it is used for.
-    loopWidthX = round((message.loop_bb_maxX - message.loop_bb_minX), 5)
+    tipX = message.tip_x
+    tipY = message.tip_y
+    pinBaseX = message.pin_base_x
+    fiberWidth = 0.222  # not sure we can or need to support this
+    loopWidth = message.loop_width_y
+    boxMinX = message.loop_bb_minX
+    boxMaxX = message.loop_bb_maxX
+    boxMinY = message.loop_bb_minY
+    boxMaxY = message.loop_bb_maxY
+    loopWidthX = message.loop_width_x
+
     if message.loop_top_classification == 'mitegen':
         isMicroMount = 1
     else:
         isMicroMount = 0
+
     loopClass = message.loop_top_classification
-    loopScore = round(message.loop_top_score, 5)
+    loopScore = message.loop_top_score
 
     for ao in activeOps:
         if ao.operation_name == 'testAutoML':
@@ -619,7 +453,8 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
             )
 
         elif ao.operation_name == 'getLoopInfo':
-            if status == 'normal':
+            if message.pin_num is not None:
+                status = 'normal'
                 result = [
                     tipX,
                     tipY,
@@ -635,11 +470,12 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                     loopClass,
                     loopScore,
                 ]
-            elif status == 'failed':
-                pass
+            else:
+                status = 'failed'
+                result = []
 
             msg = ' '.join(map(str, result))
-            _logger.info(f'SEND TO DCSS: {msg}')
+            _logger.info(f'SEND TO DCSS: {status} {msg}')
             context.get_connection('dcss_conn').send(
                 DcssHtoSOperationCompleted(
                     ao.operation_name, ao.operation_handle, status, msg
@@ -647,6 +483,15 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
             )
 
         elif ao.operation_name == 'collectLoopImages':
+            if message.loop_num is not None:
+                score = message.get_score(message.loop_num)
+                if score < context.config.automl_thhreshold:
+                    status = "fail"
+                else:
+                    status = "normal"
+            else:
+                status = "fail"
+
             # Increment AutoML responses received.
             ao.state.automl_responses_received += 1
             received = ao.state.automl_responses_received
@@ -662,7 +507,6 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                              f'RECEIVED FROM AutoML: {received} '
                              f'COLLECT: {collect} INDEX: {index}')
 
-                # adding extra result fields here may have implications in loopFast.tcl
                 result = [
                     'LOOP_INFO',
                     index,
@@ -681,59 +525,17 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                     loopClass,
                     loopScore,
                 ]
+
                 msg = ' '.join(map(str, result))
                 ao.state.loop_images.add_results(result)
-                _logger.debug(f'OPERATION UPDATE SEND TO DCSS: {msg}')
+                _logger.debug(f'OPERATION UPDATE SEND TO DCSS: {status} {msg}')
                 context.get_connection('dcss_conn').send(
                     DcssHtoSOperationUpdate(ao.operation_name, ao.operation_handle, msg)
                 )
 
-                # ao.state.automl_responses_received += 1
-
                 # Draw the AutoML bounding box if we are saving files to disk.
-                # could be problems if the bb properties are undefined.
                 if context.config.save_images:
-                    if message.loop_num is not None:
-                        loop_upper_left = [message.loop_bb_minX, message.loop_bb_minY]
-                        loop_lower_right = [message.loop_bb_maxX, message.loop_bb_maxY]
-                        loop_tip = [round(tipX, 3), round(tipY, 3)]
-                    else:
-                        loop_upper_left = [0.01, 0.01]
-                        loop_lower_right = [0.02, 0.02]
-                        loop_tip = [0.5, 0.5]
-
-                    if message.pin_num is not None:
-                        pin_upper_left = [message.pin_bb_minX, message.pin_bb_minY]
-                        pin_lower_right = [message.pin_bb_maxX, message.pin_bb_maxY]
-                    else:
-                        pin_upper_left = [0.03, 0.03]
-                        pin_lower_right = [0.04, 0.04]
-
-                    _logger.debug(
-                        f'DRAW LOOP BOUNDING BOX FOR IMAGE: {index}'
-                        f'UL: {loop_upper_left} LR: {loop_lower_right} TIP: {loop_tip}'
-                    )
-                    _logger.debug(
-                        f'DRAW PIN BOUNDING BOX FOR IMAGE: {index}'
-                        f'UL: {pin_upper_left} LR: {pin_lower_right}'
-                    )
-
-                    axisfilename = 'loop_{:04}.jpeg'.format(index)
-                    file_to_adorn = os.path.join(ao.state.results_dir, axisfilename)
-                    output_dir = os.path.join(ao.state.results_dir, 'bboxes')
-                    if os.path.isfile(file_to_adorn):
-                        draw_bounding_box(file_to_adorn,
-                                            loop_upper_left,
-                                            loop_lower_right,
-                                            loop_tip,
-                                            pin_upper_left,
-                                            pin_lower_right,
-                                            output_dir,
-                                            str(loopScore),
-                                            loopClass,
-                                            )
-                    else:
-                        _logger.warning(f'DID NOT FIND IMAGE: {file_to_adorn}')
+                    do_debug_tasks(message, tipX, tipY, loopClass, loopScore, ao, index)
 
 
             # Send Operation Complete message.
@@ -742,7 +544,7 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                 if context.config.save_images:
                     save_loop_info(ao.state.results_dir, ao.state.loop_images)
                     plot_loop_widths(ao.state.results_dir, ao.state.loop_images)
-                    plot_automl_scores(ao.state.results_dir, ao.state.loop_images)
+                    plot_automl_stats(ao.state.results_dir, ao.state.loop_images)
                 context.state.rebox_images = ao.state.loop_images
                 _logger.info('SEND OPERATION COMPLETE TO DCSS')
                 context.get_connection('dcss_conn').send(
@@ -755,11 +557,10 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                 _logger.warning('=====================================================')
                 _logger.warning(f'SENT: {sent} RECEIVED: {received} COLLECT: {collect}')
                 _logger.warning('=====================================================')
-                # context.get_connection('jpeg_receiver_conn').disconnect()
-                # time.sleep(2)
 
     activeOps = context.get_active_operations()
     _logger.debug(f'Active operations post-completed={activeOps}')
+
 
 @register_message_handler('jpeg_receiver_image_post_request')
 def jpeg_receiver_image_post_request(
@@ -820,6 +621,41 @@ def axis_image_response(message: AxisImageResponseMessage, context: DhsContext):
             )
         else:
             _logger.warning('RECEVIED JPEG, BUT NOT DOING ANYTHING WITH IT.')
+
+def do_debug_tasks(message, tipX, tipY, loopClass, loopScore, ao, index):
+    if message.loop_num is not None:
+        loop_upper_left = [message.loop_bb_minX, message.loop_bb_minY]
+        loop_lower_right = [message.loop_bb_maxX, message.loop_bb_maxY]
+        loop_tip = [round(tipX, 3), round(tipY, 3)]
+    else:
+        loop_upper_left = [0.01, 0.01]
+        loop_lower_right = [0.02, 0.02]
+        loop_tip = [0.5, 0.5]
+
+    if message.pin_num is not None:
+        pin_upper_left = [message.pin_bb_minX, message.pin_bb_minY]
+        pin_lower_right = [message.pin_bb_maxX, message.pin_bb_maxY]
+    else:
+        pin_upper_left = [0.03, 0.03]
+        pin_lower_right = [0.04, 0.04]
+
+
+    axisfilename = 'loop_{:04}.jpeg'.format(index)
+    file_to_adorn = os.path.join(ao.state.results_dir, axisfilename)
+    output_dir = os.path.join(ao.state.results_dir, 'bboxes')
+    if os.path.isfile(file_to_adorn):
+        draw_bounding_box(file_to_adorn,
+                            loop_upper_left,
+                            loop_lower_right,
+                            loop_tip,
+                            pin_upper_left,
+                            pin_lower_right,
+                            output_dir,
+                            str(loopScore),
+                            loopClass,
+                            )
+    else:
+        _logger.warning(f'DID NOT FIND IMAGE: {file_to_adorn}')
 
 
 def save_jpeg(image: bytes, index: int = None, save_dir: str = None):
@@ -1123,8 +959,8 @@ def plot_loop_widths(results_dir: str, images: LoopImageSet):
         props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
         axes.annotate(edge_label, (res.x + 0.2, res.fun), fontsize=14, bbox=props)
 
-        axes.set_xlabel('Image Phi Position (rad)')  # X axis data label
-        axes.set_ylabel('Loop Width (px)')  # Y axis data label
+        axes.set_xlabel('Image Phi Position (rad)')
+        axes.set_ylabel('Loop Width (px)')
         axes.legend(loc='best')
 
         fn = 'plot_loop_widths.png'
@@ -1136,27 +972,43 @@ def plot_loop_widths(results_dir: str, images: LoopImageSet):
     model_and_scatter_plot(graph_width, graph_height)
 
 
-def plot_automl_scores(results_dir: str, images: LoopImageSet):
+def plot_automl_stats(results_dir: str, images: LoopImageSet):
     indices = [e[1] for e in images.results]
-    scores = [e[14] for e in images.results]
+    tipx = [e[3] for e in images.results]
+    pinbasex = [e[5] for e in images.results]
+    loopwidthx = [e[12] for e in images.results]
+    scores = [e[15] for e in images.results]
 
     def scatter_plot(graph_width, graph_height):
         f = plt.figure(figsize=(graph_width / 100.0, graph_height / 100.0), dpi=100)
-        axes = f.add_subplot(111)
+        axes = f.add_subplot(211)
 
-        # raw data as a scatter plot
-        axes.scatter(indices, scores, color='black', marker='o', label='data')
+        axes.scatter(indices, scores, marker='o', label='score')
+        axes.scatter(indices, tipx, marker='o', label='tipx')
+        axes.scatter(indices, pinbasex, marker='o', label='pinbasex')
+        axes.scatter(indices, loopwidthx, marker='o', label='loopwidthx')
 
         axes.set_xlabel('Index')  # X axis data label
-        axes.set_ylabel('AutoML Score')  # Y axis data label
+        axes.set_ylabel('')  # Y axis data label
         axes.legend(loc='best')
+
+        axes2 = f.add_subplot(212)
+        scores_array = np.asarray(scores)
+        axes2.hist(scores_array)
+        mu = scores_array.mean()
+        median = np.median(scores_array)
+        sigma = scores_array.std()
+        mode = stats.mode(scores)
+        textstr = '\n'.join((f"mu: {mu:4.3}", f"median: {median:4.3}", f"sigma: {sigma:4.3}"))
+        props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+        axes2.text(0.05, 0.95, textstr, transform=axes2.transAxes, fontsize=14, verticalalignment='top', bbox=props)
 
         fn = 'plot_automl_scores.png'
         results_plot = os.path.join(results_dir, fn)
         f.savefig(results_plot)
 
     graph_width = 800
-    graph_height = 600
+    graph_height = 1200
     scatter_plot(graph_width, graph_height)
 
 
