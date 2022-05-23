@@ -383,7 +383,7 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
             
             if object == 'pin' and message.pin_num is None:
                 message.pin_num = i
-                _logger.success(f'AUTOML RESULT #{i} IS A: {object: <8} SCORE: {score}')
+                _logger.info(f'AUTOML RESULT #{i} IS A: {object: <8} SCORE: {score}')
                 
             elif (object == 'mitegen' or object == 'nylon') and message.loop_num is None:
                 message.loop_num = i
@@ -391,7 +391,7 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                     _logger.warning(f'AUTOML RESULT #{i} IS A: {object: <8} SCORE: {score} '
                                     f'BELOW TH: {context.config.automl_thhreshold}')
                 else:
-                    _logger.success(f'AUTOML RESULT #{i} IS A: {object: <8} SCORE: {score}')
+                    _logger.info(f'AUTOML RESULT #{i} IS A: {object: <8} SCORE: {score}')
             _logger.spam(f"{i} {object=} {score=}")
 
         # if no loop found in top 5 results
@@ -440,57 +440,26 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
             )
 
         elif ao.operation_name == 'getLoopTip':
-            if status == 'normal':
-                result = [tipX, tipY]
-            elif status == 'failed':
-                pass
+            result = [message.tip_x, message.tip_y]
             msg = ' '.join(map(str, result))
             _logger.info(f'SEND TO DCSS: {msg}')
             context.get_connection('dcss_conn').send(
                 DcssHtoSOperationCompleted(
-                    ao.operation_name, ao.operation_handle, status, msg
+                    ao.operation_name, ao.operation_handle, message.status, msg
                 )
             )
 
         elif ao.operation_name == 'getLoopInfo':
-            if message.pin_num is not None:
-                status = 'normal'
-                result = [
-                    tipX,
-                    tipY,
-                    pinBaseX,
-                    fiberWidth,
-                    loopWidth,
-                    boxMinX,
-                    boxMaxX,
-                    boxMinY,
-                    boxMaxY,
-                    loopWidthX,
-                    isMicroMount,
-                    loopClass,
-                    loopScore,
-                ]
-            else:
-                status = 'failed'
-                result = []
 
-            msg = ' '.join(map(str, result))
-            _logger.info(f'SEND TO DCSS: {status} {msg}')
+            msg = ' '.join(map(str, message.loop_info_result))
+            _logger.info(f'SEND TO DCSS: {msg}')
             context.get_connection('dcss_conn').send(
                 DcssHtoSOperationCompleted(
-                    ao.operation_name, ao.operation_handle, status, msg
+                    ao.operation_name, ao.operation_handle, "normal", msg
                 )
             )
 
         elif ao.operation_name == 'collectLoopImages':
-            if message.loop_num is not None:
-                score = message.get_score(message.loop_num)
-                if score < context.config.automl_thhreshold:
-                    status = "fail"
-                else:
-                    status = "normal"
-            else:
-                status = "fail"
 
             # Increment AutoML responses received.
             ao.state.automl_responses_received += 1
@@ -503,40 +472,20 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
             # Send Operation Update message.
             # if received < expected_frames and collect is True:
             if received < expected_frames:
-                _logger.info(f'OPERATION UPDATE SENT TO AutoML: {sent} '
+                _logger.debug(f'OPERATION UPDATE SENT TO AutoML: {sent} '
                              f'RECEIVED FROM AutoML: {received} '
                              f'COLLECT: {collect} INDEX: {index}')
 
-                result = [
-                    'LOOP_INFO',
-                    index,
-                    status,
-                    tipX,
-                    tipY,
-                    pinBaseX,
-                    fiberWidth,
-                    loopWidth,
-                    boxMinX,
-                    boxMaxX,
-                    boxMinY,
-                    boxMaxY,
-                    loopWidthX,
-                    isMicroMount,
-                    loopClass,
-                    loopScore,
-                ]
-
-                msg = ' '.join(map(str, result))
-                ao.state.loop_images.add_results(result)
-                _logger.debug(f'OPERATION UPDATE SEND TO DCSS: {status} {msg}')
+                msg = ' '.join(map(str, message.dcss_result))
+                ao.state.loop_images.add_results(message.dcss_result)
+                _logger.success(f'OPERATION UPDATE SEND TO DCSS1: {msg}')
                 context.get_connection('dcss_conn').send(
                     DcssHtoSOperationUpdate(ao.operation_name, ao.operation_handle, msg)
                 )
 
                 # Draw the AutoML bounding box if we are saving files to disk.
                 if context.config.save_images:
-                    do_debug_tasks(message, tipX, tipY, loopClass, loopScore, ao, index)
-
+                    adorn_image(AutoMLImage(message, ao.state.results_dir))
 
             # Send Operation Complete message.
             elif received >= expected_frames:
@@ -622,41 +571,11 @@ def axis_image_response(message: AxisImageResponseMessage, context: DhsContext):
         else:
             _logger.warning('RECEVIED JPEG, BUT NOT DOING ANYTHING WITH IT.')
 
-def do_debug_tasks(message, tipX, tipY, loopClass, loopScore, ao, index):
-    if message.loop_num is not None:
-        loop_upper_left = [message.loop_bb_minX, message.loop_bb_minY]
-        loop_lower_right = [message.loop_bb_maxX, message.loop_bb_maxY]
-        loop_tip = [round(tipX, 3), round(tipY, 3)]
+def adorn_image(automl_image):
+    if os.path.isfile(automl_image.file_to_adorn):
+        automl_image.draw_bounding_box()
     else:
-        loop_upper_left = [0.01, 0.01]
-        loop_lower_right = [0.02, 0.02]
-        loop_tip = [0.5, 0.5]
-
-    if message.pin_num is not None:
-        pin_upper_left = [message.pin_bb_minX, message.pin_bb_minY]
-        pin_lower_right = [message.pin_bb_maxX, message.pin_bb_maxY]
-    else:
-        pin_upper_left = [0.03, 0.03]
-        pin_lower_right = [0.04, 0.04]
-
-
-    axisfilename = 'loop_{:04}.jpeg'.format(index)
-    file_to_adorn = os.path.join(ao.state.results_dir, axisfilename)
-    output_dir = os.path.join(ao.state.results_dir, 'bboxes')
-    if os.path.isfile(file_to_adorn):
-        draw_bounding_box(file_to_adorn,
-                            loop_upper_left,
-                            loop_lower_right,
-                            loop_tip,
-                            pin_upper_left,
-                            pin_lower_right,
-                            output_dir,
-                            str(loopScore),
-                            loopClass,
-                            )
-    else:
-        _logger.warning(f'DID NOT FIND IMAGE: {file_to_adorn}')
-
+        _logger.warning(f'DID NOT FIND IMAGE: {automl_image.file_to_adorn}')
 
 def save_jpeg(image: bytes, index: int = None, save_dir: str = None):
     """
