@@ -18,19 +18,6 @@ import yaml
 import io
 import glob
 import re
-import cv2
-import math
-import csv
-import matplotlib
-from matplotlib import pyplot as plt
-import numpy as np
-from scipy import stats
-from scipy.optimize import curve_fit, minimize_scalar
-from scipy.optimize import differential_evolution
-import numpy as np
-import warnings
-from datetime import datetime as dt
-from dotty_dict.dotty_dict import Dotty
 from datetime import datetime
 from pathlib import Path
 
@@ -367,17 +354,11 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                         f'BELOW THRESHOLD: {context.config.automl_thhreshold}')
         status = 'failed'
         result = ['no loop or pin detected, AutoML score: ', message.get_score(0)]
-        # need to set these values or we have problems below when getting loop params.
-        # message.pin_num = 0
-        # message.loop_num = 0
-        pass
 
     else:
-        # status = None
-        # result = []
-        # look at the top 5 results for a pin and a loop object.
-        # 5 is arbitrary. This code should find the highest scoring pin and loop.
-        for i in range(5):
+        # look at the top N results for a pin and a loop object.
+        # This code should find the highest scoring pin and loop.
+        for i in range(context.config.automl_scan_n_results):
             object = message.get_detection_class_as_text(i)
             score = message.get_score(i)
             
@@ -394,33 +375,14 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                     _logger.info(f'AUTOML RESULT #{i} IS A: {object: <8} SCORE: {score}')
             _logger.spam(f"{i} {object=} {score=}")
 
-        # if no loop found in top 5 results
+        # if no loop found in top N results
         if message.loop_num is None:
-            _logger.warning('NO LOOP IN TOP 5 AUTOML RESULTS. SETTING TO 0')
+            _logger.warning(f'NO LOOP IN TOP {context.config.automl_scan_n_results} AUTOML RESULTS. SETTING TO 0')
             message.loop_num = 0
 
         # if message.pin_num is None:
         #     _logger.warning('NO PIN IN TOP 5 AUTOML RESULTS. SETTING TO 0')
         #     message.pin_num = 0
-
-    tipX = message.tip_x
-    tipY = message.tip_y
-    pinBaseX = message.pin_base_x
-    fiberWidth = 0.222  # not sure we can or need to support this
-    loopWidth = message.loop_width_y
-    boxMinX = message.loop_bb_minX
-    boxMaxX = message.loop_bb_maxX
-    boxMinY = message.loop_bb_minY
-    boxMaxY = message.loop_bb_maxY
-    loopWidthX = message.loop_width_x
-
-    if message.loop_top_classification == 'mitegen':
-        isMicroMount = 1
-    else:
-        isMicroMount = 0
-
-    loopClass = message.loop_top_classification
-    loopScore = message.loop_top_score
 
     for ao in activeOps:
         if ao.operation_name == 'testAutoML':
@@ -465,7 +427,6 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
             ao.state.automl_responses_received += 1
             received = ao.state.automl_responses_received
             sent = ao.state.image_index
-            index = int(message.image_key.split(':')[2])
             expected_frames = context.config.osci_time * context.config.video_fps
             collect = context.state.collect_images
 
@@ -473,8 +434,8 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
             # if received < expected_frames and collect is True:
             if received < expected_frames:
                 _logger.debug(f'OPERATION UPDATE SENT TO AutoML: {sent} '
-                             f'RECEIVED FROM AutoML: {received} '
-                             f'COLLECT: {collect} INDEX: {index}')
+                              f'RECEIVED FROM AutoML: {received} '
+                              f'COLLECT: {collect} INDEX: {message.index}')
 
                 msg = ' '.join(map(str, message.dcss_result))
                 ao.state.loop_images.add_results(message.dcss_result)
@@ -485,15 +446,15 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
 
                 # Draw the AutoML bounding box if we are saving files to disk.
                 if context.config.save_images:
-                    adorn_image(AutoMLImage(message, ao.state.results_dir))
-
+                    image = AutoMLImage(message, ao.state.results_dir)
+                    image.adorn_image()
             # Send Operation Complete message.
             elif received >= expected_frames:
                 _logger.success(f'SENT: {sent} RECEIVED: {received} COLLECT: {collect}')
                 if context.config.save_images:
-                    save_loop_info(ao.state.results_dir, ao.state.loop_images)
-                    plot_loop_widths(ao.state.results_dir, ao.state.loop_images)
-                    plot_automl_stats(ao.state.results_dir, ao.state.loop_images)
+                    ao.state.loop_images.write_csv_file(ao.state.results_dir)
+                    ao.state.loop_images.plot_loop_widths(ao.state.results_dir)
+                    ao.state.loop_images.pandas_plot(ao.state.results_dir)
                 context.state.rebox_images = ao.state.loop_images
                 _logger.info('SEND OPERATION COMPLETE TO DCSS')
                 context.get_connection('dcss_conn').send(
@@ -517,7 +478,7 @@ def jpeg_receiver_image_post_request(
 ):
     """Handles JPEG images arriving on the jpeg receiver port
        then sends them to AutoMLPredictRequest."""
-    _logger.spam(message.file)
+    # _logger.spam(message.file)
     activeOps = context.get_active_operations(operation_name='collectLoopImages')
 
     if len(activeOps) > 0:
@@ -526,19 +487,11 @@ def jpeg_receiver_image_post_request(
         opHandle = activeOp.operation_handle
         resultsDir = activeOp.state.results_dir
 
-        # calculate expected number of images
-        # expected_frames = context.config.osci_time * context.config.video_fps
-
         _logger.debug(f'ADD {len(message.file)} BYTE IMAGE TO JPEG LIST')
         activeOp.state.loop_images.add_image(message.file)
 
         if context.config.save_images:
             save_jpeg(message.file, activeOp.state.image_index, resultsDir)
-
-        # if activeOp.state.image_index < expected_frames:
-        #     image_key = ':'.join([opName,opHandle,str(activeOp.state.image_index)])
-        # else:
-        #     image_key = ':'.join([opName,opHandle,'999'])
 
         image_key = ':'.join([opName, opHandle, str(activeOp.state.image_index)])
 
@@ -549,8 +502,8 @@ def jpeg_receiver_image_post_request(
         # increment image index which we use as a count of images SENT.
         activeOp.state.image_index += 1
     else:
-        _logger.warning('RECEVIED JPEG, BUT NOT DOING ANYTHING WITH IT. \
-                         no active collectLoopImages operation.')
+        _logger.warning('RECEVIED JPEG, BUT NOT DOING ANYTHING WITH IT. '
+                        'no active collectLoopImages operation.')
 
 
 @register_message_handler('axis_image_response')
@@ -571,11 +524,6 @@ def axis_image_response(message: AxisImageResponseMessage, context: DhsContext):
         else:
             _logger.warning('RECEVIED JPEG, BUT NOT DOING ANYTHING WITH IT.')
 
-def adorn_image(automl_image):
-    if os.path.isfile(automl_image.file_to_adorn):
-        automl_image.draw_bounding_box()
-    else:
-        _logger.warning(f'DID NOT FIND IMAGE: {automl_image.file_to_adorn}')
 
 def save_jpeg(image: bytes, index: int = None, save_dir: str = None):
     """
@@ -602,333 +550,6 @@ def save_jpeg(image: bytes, index: int = None, save_dir: str = None):
     f.write(image)
     f.close()
     _logger.debug(f'SAVED JPEG IMAGE FILE: {save_name}')
-
-
-def draw_bounding_box(
-    file_to_adorn: str,
-    loop_upper_left_corner: list,
-    loop_lower_right_corner: list,
-    tip: list,
-    pin_upper_left_corner: list,
-    pin_lower_right_corner: list,
-    output_dir: str,
-    automl_score: str,
-    automl_class: str,
-):
-    """Draw the AutoML bounding box and loop tip crosshair overlaid on a JPEG image."""
-    image = cv2.imread(file_to_adorn)
-    s = tuple(image.shape[1::-1])
-    w = s[0]
-    h = s[1]
-    tipX_frac = tip[0]
-    tipY_frac = tip[1]
-    tipX = round(tipX_frac * w)
-    tipY = round(tipY_frac * h)
-    crosshair_size = round(0.1 * h)
-    # upper left corner of rectangle in pixels.
-    loop_start_point = (
-        math.floor(loop_upper_left_corner[0] * w),
-        math.floor(loop_upper_left_corner[1] * h),
-    )
-    pin_start_point = (
-        math.floor(pin_upper_left_corner[0] * w),
-        math.floor(pin_upper_left_corner[1] * h),
-    )
-
-    # lower right corner of rectangle in pixels.
-    loop_end_point = (
-        math.ceil(loop_lower_right_corner[0] * w),
-        math.ceil(loop_lower_right_corner[1] * h),
-    )
-    pin_end_point = (
-        math.ceil(pin_lower_right_corner[0] * w),
-        math.ceil(pin_lower_right_corner[1] * h),
-    )
-
-    loop_w = round((loop_lower_right_corner[0] - loop_upper_left_corner[0]), 3)
-    loop_h = round((loop_lower_right_corner[1] - loop_upper_left_corner[1]), 3)
-
-    # volor in BGR
-    red = (0, 0, 255)
-    green = (0, 255, 0)
-    magenta = (255, 0 , 255)
-
-    # Line thickness in px
-    thickness = 1
-
-    cv2.rectangle(image, loop_start_point, loop_end_point, red, thickness)
-    cv2.rectangle(image, pin_start_point, pin_end_point, magenta, thickness)
-    cross_hair_horz = [(tipX - crosshair_size, tipY), (tipX + crosshair_size, tipY)]
-    cross_hair_vert = [(tipX, tipY - crosshair_size), (tipX, tipY + crosshair_size)]
-    cv2.line(image, cross_hair_horz[0], cross_hair_horz[1], green, 2)
-    cv2.line(image, cross_hair_vert[0], cross_hair_vert[1], green, 2)
-    font                   = cv2.FONT_HERSHEY_SIMPLEX
-    fontScale              = 0.70
-    fontColor              = red
-    lineType               = 2
-
-    cv2.putText(image, automl_class,
-        (20,50),
-        font,
-        fontScale,
-        fontColor,
-        thickness,
-        lineType)
-    cv2.putText(image, ("TH: " + automl_score),
-        (20,100),
-        font,
-        fontScale,
-        fontColor,
-        thickness,
-        lineType)
-    cv2.putText(image, ("tipX: " + str(tipX_frac)),
-        (240,50),
-        font,
-        fontScale,
-        green,
-        thickness,
-        lineType)
-    cv2.putText(image, ("tipY: " + str(tipY_frac)),
-        (240,100),
-        font,
-        fontScale,
-        green,
-        thickness,
-        lineType)
-    cv2.putText(image, ("loopW: " + str(loop_w)),
-        (450,50),
-        font,
-        fontScale,
-        red,
-        thickness,
-        lineType)
-    cv2.putText(image, ("loopH: " + str(loop_h)),
-        (450,100),
-        font,
-        fontScale,
-        red,
-        thickness,
-        lineType)
-
-    output_filename = 'automl_' + os.path.basename(file_to_adorn)
-    outfile = os.path.join(output_dir, output_filename)
-    cv2.imwrite(outfile, image)
-    _logger.debug(f'DRAW BOUNDING BOX: {outfile}')
-
-
-def save_loop_info(results_dir: str, images: LoopImageSet):
-    """Save the accumulated loop info to a CSV file."""
-    fn = 'loop_info.csv'
-    results_file = os.path.join(results_dir, fn)
-    with open(results_file, 'w', newline='') as f:
-        writer = csv.writer(f, delimiter=',')
-        header = [
-            'LOOP_INFO',
-            'index',
-            'status',
-            'tipX',
-            'tipY',
-            'pinBaseX',
-            'fiberWidth',
-            'loopWidth',
-            'boxMinX',
-            'boxMaxX',
-            'boxMinY',
-            'boxMaxY',
-            'loopWidthX',
-            'isMicroMount',
-            'loopClass',
-            'loopScore',
-        ]
-        writer.writerow(header)
-        for row in images.results:
-            writer.writerow(row)
-
-
-def plot_loop_widths(results_dir: str, images: LoopImageSet):
-    """
-    Plot of image vs loopWidth.
-
-    The curve fitting code is adapted from James Phillips.
-    Here is a Python fitter with a sine equation and your data using the
-    scipy.optimize Differential Evolution genetic algorithm module to determine
-    initial parameter estimates for curve_fit's non-linear solver.
-    https://stackoverflow.com/a/58478075/3023774
-    """
-    indices = [e[1] for e in images.results]
-    _logger.spam(f'PLOT INDICES: {indices}')
-    _loop_widths = [e[7] for e in images.results]
-    _logger.spam(f'PLOT LOOP WIDTHS: {_loop_widths}')
-    # empty list to store x y data
-    _x_data = []
-    _y_data = []
-
-    # images are 2 degrees apart and must be converted to radians
-    for index in indices:
-        angle = index * 2
-        rad = math.radians(angle)
-        _x_data.append(rad)
-
-    # convert loopWidth from fractional to pixel coordinates
-    for width in _loop_widths:
-        w = 480 * width
-        _y_data.append(w)
-
-    # convert python lists to numpy arrays
-    x_data = np.array(_x_data)
-    y_data = np.array(_y_data)
-
-    # sine wave with amplitude, center, width, and offset
-    def func(x, amplitude, center, width, offset):
-        return amplitude * np.sin(np.pi * (x - center) / width) + offset
-
-    # function for genetic algorithm to minimize (sum of squared error)
-    def sum_of_squared_error(parameter_tuple):
-        warnings.filterwarnings('ignore')  # do not print warnings by genetic algorithm
-        val = func(x_data, *parameter_tuple)
-        return np.sum((y_data - val) ** 2.0)
-
-    # reasonable initial values are needed for a stable curve fit
-    def generate_initial_parameters():
-        # min and max used for bounds
-        maxX = max(x_data)
-        minX = min(x_data)
-        maxY = max(y_data)
-        minY = min(y_data)
-
-        diffY = maxY - minY
-        diffX = maxX - minX
-
-        parameter_bounds = []
-        parameter_bounds.append([0.0, diffY])  # search bounds for amplitude
-        parameter_bounds.append([minX, maxX])  # search bounds for center
-        parameter_bounds.append([0.0, diffX])  # search bounds for width
-        parameter_bounds.append([minY, maxY])  # search bounds for offset
-
-        # "seed" the np random number generator for repeatable results
-        result = differential_evolution(sum_of_squared_error, parameter_bounds, seed=42)
-        return result.x
-
-    # by default, differential_evolution completes by calling curve_fit() using parameter bounds
-    genetic_parameters = generate_initial_parameters()
-    _logger.debug(f'DIFFERENTIAL EVOLUTION: {genetic_parameters}')
-
-    # now call curve_fit without passing bounds from the genetic algorithm,
-    # just in case the best fit parameters are outside those bounds
-    fitted_parameters, pcov = curve_fit(func, x_data, y_data, genetic_parameters)
-    _logger.debug(f'FITTED PARAMETERS: {fitted_parameters}')
-
-    model_predictions = func(x_data, *fitted_parameters)
-
-    abs_error = model_predictions - y_data
-
-    SE = np.square(abs_error)  # squared errors
-    MSE = np.mean(SE)  # mean squared errors
-    RMSE = np.sqrt(MSE)  # Root Mean Squared Error, RMSE
-    r_squared = 1.0 - (np.var(abs_error) / np.var(y_data))
-
-    _logger.debug(f'RMSE: {RMSE}')
-    _logger.debug(f'R-SQUARED: {r_squared}')
-
-    def model_and_scatter_plot(graph_width, graph_height):
-        f = plt.figure(figsize=(graph_width / 100.0, graph_height / 100.0), dpi=100)
-        axes = f.add_subplot(111)
-
-        # raw data as a scatter plot
-        axes.scatter(x_data, y_data, color='black', marker='o', label='data')
-
-        # create data for the fitted equation plot
-        x_model = np.linspace(min(x_data), max(x_data))
-        y_model = func(x_model, *fitted_parameters)
-
-        # now the model as a line plot
-        axes.plot(x_model, y_model, color='red', label='fit')
-
-        # calculate the phi value for the max (face view)
-        fm = lambda xData: -func(xData, *fitted_parameters)
-        res = minimize_scalar(fm, bounds=(0, 8))
-        _logger.info(f'LOOP MAX (FACE): {math.degrees(res.x)}')
-        axes.plot(
-            res.x,
-            func(res.x, *fitted_parameters),
-            color='green',
-            marker='o',
-            markersize=18,
-        )
-        max_x = str(round(math.degrees(res.x), 3))
-        # max_y = str(round(-res.fun,3))
-        face_label = ''.join(['FACE: Phi = ', max_x, u'\N{DEGREE SIGN}'])
-        props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-        axes.annotate(face_label, (res.x + 0.2, -res.fun), fontsize=14, bbox=props)
-
-        # calculate the phi value for the min (edge view)
-        fm = lambda xData: func(xData, *fitted_parameters)
-        res = minimize_scalar(fm, bounds=(0, 8))
-        _logger.info(f'LOOP MIN (EDGE): {math.degrees(res.x)}')
-        axes.plot(
-            res.x,
-            func(res.x, *fitted_parameters),
-            color='magenta',
-            marker='o',
-            markersize=18,
-        )
-        min_x = str(round(math.degrees(res.x), 2))
-        # min_y = str(round(res.fun,2))
-        edge_label = ''.join(['EDGE: Phi = ', min_x, u'\N{DEGREE SIGN}'])
-        props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-        axes.annotate(edge_label, (res.x + 0.2, res.fun), fontsize=14, bbox=props)
-
-        axes.set_xlabel('Image Phi Position (rad)')
-        axes.set_ylabel('Loop Width (px)')
-        axes.legend(loc='best')
-
-        fn = 'plot_loop_widths.png'
-        results_plot = os.path.join(results_dir, fn)
-        f.savefig(results_plot)
-
-    graph_width = 800
-    graph_height = 600
-    model_and_scatter_plot(graph_width, graph_height)
-
-
-def plot_automl_stats(results_dir: str, images: LoopImageSet):
-    indices = [e[1] for e in images.results]
-    tipx = [e[3] for e in images.results]
-    pinbasex = [e[5] for e in images.results]
-    loopwidthx = [e[12] for e in images.results]
-    scores = [e[15] for e in images.results]
-
-    def scatter_plot(graph_width, graph_height):
-        f = plt.figure(figsize=(graph_width / 100.0, graph_height / 100.0), dpi=100)
-        axes = f.add_subplot(211)
-
-        axes.scatter(indices, scores, marker='o', label='score')
-        axes.scatter(indices, tipx, marker='o', label='tipx')
-        axes.scatter(indices, pinbasex, marker='o', label='pinbasex')
-        axes.scatter(indices, loopwidthx, marker='o', label='loopwidthx')
-
-        axes.set_xlabel('Index')  # X axis data label
-        axes.set_ylabel('')  # Y axis data label
-        axes.legend(loc='best')
-
-        axes2 = f.add_subplot(212)
-        scores_array = np.asarray(scores)
-        axes2.hist(scores_array)
-        mu = scores_array.mean()
-        median = np.median(scores_array)
-        sigma = scores_array.std()
-        mode = stats.mode(scores)
-        textstr = '\n'.join((f"mu: {mu:4.3}", f"median: {median:4.3}", f"sigma: {sigma:4.3}"))
-        props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-        axes2.text(0.05, 0.95, textstr, transform=axes2.transAxes, fontsize=14, verticalalignment='top', bbox=props)
-
-        fn = 'plot_automl_scores.png'
-        results_plot = os.path.join(results_dir, fn)
-        f.savefig(results_plot)
-
-    graph_width = 800
-    graph_height = 1200
-    scatter_plot(graph_width, graph_height)
 
 
 def configure_logging(verbosity):

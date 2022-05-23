@@ -64,6 +64,10 @@ class LoopDHSConfig(Dotty):
         return self['loopdhs.automl.threshold']
 
     @property
+    def automl_scan_n_results(self):
+        return self['loopdhs.automl.scan_n_results']
+
+    @property
     def osci_delta(self):
         return self['loopdhs.osci_delta']
 

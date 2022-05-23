@@ -50,6 +50,10 @@ class AutoMLImage():
             self.pin_upper_left = [0.03, 0.03]
             self.pin_lower_right = [0.04, 0.04]
 
+    def adorn_image(self):
+        self.draw_bounding_box()
+        # self.draw_automl_stats()
+
 
     def draw_bounding_box(self):
         """Draw the AutoML bounding box and loop tip crosshair overlaid on a JPEG image."""
