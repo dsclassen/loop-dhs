@@ -7,7 +7,6 @@ __copyright__ = 'Scott Classen'
 __license__ = 'mit'
 
 import os
-import platform
 import logging
 from logging.handlers import RotatingFileHandler
 import coloredlogs
@@ -42,17 +41,10 @@ from loop_dhs.automl_image import AutoMLImage
 from loop_dhs.loop_image import CollectLoopImageState
 from loop_dhs.loop_dhs_config import (
     LoopDHSState,
-    LoopImageSet,
     LoopDHSConfig,
-    )
+)
 
 _logger = verboselogs.VerboseLogger('loopDHS')
-
-# Mac OS does not like Tkinter (TkAgg backend) so must use QtAgg
-# or just Agg if no GUI is required. i.e. just writing plots out to a png file.
-if platform.system() == 'Darwin':
-    matplotlib.use('Agg')
-
 
 
 @register_message_handler('dhs_init')
@@ -115,7 +107,9 @@ def dhs_init(message: DhsInit, context: DhsContext):
     _logger.success(f'     PORT:          {context.config["dcss.port"]}')
     _logger.success(f'AUTOML HOST:        {context.config["loopdhs.automl.host"]}')
     _logger.success(f'       PORT:        {context.config["loopdhs.automl.port"]}')
-    _logger.success(f'JPEG RECEIVER PORT: {context.config["loopdhs.jpeg_receiver.port"]}')
+    _logger.success(
+        f'JPEG RECEIVER PORT: {context.config["loopdhs.jpeg_receiver.port"]}'
+    )
     _logger.success(f'AXIS HOST:          {context.config["loopdhs.axis.host"]}')
     _logger.success(f'     PORT:          {context.config["loopdhs.axis.port"]}')
     _logger.success('=============================================')
@@ -223,7 +217,9 @@ def collect_loop_images(message: DcssStoHStartOperation, context: DcssContext):
     if context.config.save_images:
         if os.path.exists(context.config.timestamped_debug_dir):
             opDir = ''.join([opName, opHandle.replace('.', '_')])
-            operationResultsDir = os.path.join(context.config.timestamped_debug_dir, opDir)
+            operationResultsDir = os.path.join(
+                context.config.timestamped_debug_dir, opDir
+            )
             boundingBoxDir = os.path.join(operationResultsDir, 'bboxes')
 
             activeOp = context.get_active_operations(operation_name='collectLoopImages')
@@ -350,8 +346,10 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
     # fail immediatly if score for top object is below threshold.
     # I think this happens if jpeg is completely blank.
     if message.get_score(0) < context.config.automl_thhreshold:
-        _logger.warning(f'AUTOML SCORE: {message.get_score(0)} '
-                        f'BELOW THRESHOLD: {context.config.automl_thhreshold}')
+        _logger.warning(
+            f'AUTOML SCORE: {message.get_score(0)} '
+            f'BELOW THRESHOLD: {context.config.automl_thhreshold}'
+        )
         status = 'failed'
         result = ['no loop or pin detected, AutoML score: ', message.get_score(0)]
 
@@ -361,23 +359,31 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
         for i in range(context.config.automl_scan_n_results):
             object = message.get_detection_class_as_text(i)
             score = message.get_score(i)
-            
+
             if object == 'pin' and message.pin_num is None:
                 message.pin_num = i
                 _logger.info(f'AUTOML RESULT #{i} IS A: {object: <8} SCORE: {score}')
-                
-            elif (object == 'mitegen' or object == 'nylon') and message.loop_num is None:
+
+            elif (
+                object == 'mitegen' or object == 'nylon'
+            ) and message.loop_num is None:
                 message.loop_num = i
                 if score < context.config.automl_thhreshold:
-                    _logger.warning(f'AUTOML RESULT #{i} IS A: {object: <8} SCORE: {score} '
-                                    f'BELOW TH: {context.config.automl_thhreshold}')
+                    _logger.info(
+                        f'AUTOML RESULT #{i} IS A: {object: <8} SCORE: {score} '
+                        f'BELOW TH: {context.config.automl_thhreshold}'
+                    )
                 else:
-                    _logger.info(f'AUTOML RESULT #{i} IS A: {object: <8} SCORE: {score}')
-            _logger.spam(f"{i} {object=} {score=}")
+                    _logger.info(
+                        f'AUTOML RESULT #{i} IS A: {object: <8} SCORE: {score}'
+                    )
+            _logger.spam(f'{i} {object=} {score=}')
 
         # if no loop found in top N results
         if message.loop_num is None:
-            _logger.warning(f'NO LOOP IN TOP {context.config.automl_scan_n_results} AUTOML RESULTS. SETTING TO 0')
+            _logger.warning(
+                f'NO LOOP IN TOP {context.config.automl_scan_n_results} AUTOML RESULTS. SETTING TO 0'
+            )
             message.loop_num = 0
 
         # if message.pin_num is None:
@@ -417,7 +423,7 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
             _logger.info(f'SEND TO DCSS: {msg}')
             context.get_connection('dcss_conn').send(
                 DcssHtoSOperationCompleted(
-                    ao.operation_name, ao.operation_handle, "normal", msg
+                    ao.operation_name, ao.operation_handle, 'normal', msg
                 )
             )
 
@@ -433,9 +439,11 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
             # Send Operation Update message.
             # if received < expected_frames and collect is True:
             if received < expected_frames:
-                _logger.debug(f'OPERATION UPDATE SENT TO AutoML: {sent} '
-                              f'RECEIVED FROM AutoML: {received} '
-                              f'COLLECT: {collect} INDEX: {message.index}')
+                _logger.debug(
+                    f'OPERATION UPDATE SENT TO AutoML: {sent} '
+                    f'RECEIVED FROM AutoML: {received} '
+                    f'COLLECT: {collect} INDEX: {message.index}'
+                )
 
                 msg = ' '.join(map(str, message.dcss_result))
                 ao.state.loop_images.add_results(message.dcss_result)
@@ -477,7 +485,7 @@ def jpeg_receiver_image_post_request(
     message: JpegReceiverImagePostRequestMessage, context: DhsContext
 ):
     """Handles JPEG images arriving on the jpeg receiver port
-       then sends them to AutoMLPredictRequest."""
+    then sends them to AutoMLPredictRequest."""
     # _logger.spam(message.file)
     activeOps = context.get_active_operations(operation_name='collectLoopImages')
 
@@ -502,14 +510,16 @@ def jpeg_receiver_image_post_request(
         # increment image index which we use as a count of images SENT.
         activeOp.state.image_index += 1
     else:
-        _logger.warning('RECEVIED JPEG, BUT NOT DOING ANYTHING WITH IT. '
-                        'no active collectLoopImages operation.')
+        _logger.warning(
+            'RECEVIED JPEG, BUT NOT DOING ANYTHING WITH IT. '
+            'no active collectLoopImages operation.'
+        )
 
 
 @register_message_handler('axis_image_response')
 def axis_image_response(message: AxisImageResponseMessage, context: DhsContext):
     """Handles a single JPEG image from Axis video server for both getLoopTip
-        and getLoopInfo operations."""
+    and getLoopInfo operations."""
 
     _logger.debug(f'RECEIVED {message.file_length} BYTE IMAGE FROM AXIS VIDEO SERVER.')
     activeOps = context.get_active_operations()
@@ -600,11 +610,11 @@ def configure_logging(verbosity):
 
     coloredlogs.install(
         level=loglevel,
-        fmt='%(asctime)s,%(msecs)03d ' +
-            '%(hostname)s ' +
-            '%(name)s[%(funcName)s():%(lineno)d] ' +
-            '%(levelname)s ' +
-            '%(message)s ',
+        fmt='%(asctime)s,%(msecs)03d '
+        + '%(hostname)s '
+        + '%(name)s[%(funcName)s():%(lineno)d] '
+        + '%(levelname)s '
+        + '%(message)s ',
     )
 
     # LOG LEVELS AVAILABLE IN verboselogs module

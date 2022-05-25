@@ -1,8 +1,9 @@
-
+# -*- coding: utf-8 -*-
 import os
 from datetime import datetime as dt
 from dotty_dict.dotty_dict import Dotty
 from loop_dhs.loop_image import LoopImageSet
+
 
 class LoopDHSConfig(Dotty):
     """Class to wrap DHS configuration settings."""
@@ -12,10 +13,9 @@ class LoopDHSConfig(Dotty):
         self.timestamped_debug_dir = None
 
     def make_debug_dir(self):
-        now = dt.now().strftime("%Y-%m-%d-%H%M%S")
+        now = dt.now().strftime('%Y-%m-%d-%H%M%S')
         self.timestamped_debug_dir = os.path.join(self['loopdhs.debug_dir'], now)
         os.makedirs(self.timestamped_debug_dir)
-
 
     @property
     def dcss_url(self):
@@ -102,5 +102,3 @@ class LoopDHSState:
     @collect_images.setter
     def collect_images(self, collect: bool):
         self._collect_images = collect
-
-

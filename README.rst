@@ -1,8 +1,8 @@
-.. image:: https://readthedocs.org/projects/loop-dhs/badge/?version=latest  
-   :alt: Documentation Status  
-   :target: https://loop-dhs.readthedocs.io/en/latest/?badge=latest  
-.. image:: https://img.shields.io/github/v/tag/dsclassen/loop-dhs  
-   :alt: GitHub tag (latest by date)  
+.. image:: https://readthedocs.org/projects/loop-dhs/badge/?version=latest
+   :alt: Documentation Status
+   :target: https://loop-dhs.readthedocs.io/en/latest/?badge=latest
+.. image:: https://img.shields.io/github/v/tag/dsclassen/loop-dhs
+   :alt: GitHub tag (latest by date)
 
 ========
 loop-dhs

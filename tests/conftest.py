@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
     Dummy conftest.py for loop_dhs.
 

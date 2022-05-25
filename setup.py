@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
     Setup file for loop-dhs.
     Use setup.cfg to configure your project.
@@ -8,14 +9,14 @@
 """
 from setuptools import setup
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     try:
-        setup(use_scm_version={"version_scheme": "no-guess-dev"})
+        setup(use_scm_version={'version_scheme': 'no-guess-dev'})
     except:  # noqa
         print(
-            "\n\nAn error occurred while building the project, "
-            "please ensure you have the most updated version of setuptools, "
-            "setuptools_scm and wheel with:\n"
-            "   pip install -U setuptools setuptools_scm wheel\n\n"
+            '\n\nAn error occurred while building the project, '
+            'please ensure you have the most updated version of setuptools, '
+            'setuptools_scm and wheel with:\n'
+            '   pip install -U setuptools setuptools_scm wheel\n\n'
         )
         raise

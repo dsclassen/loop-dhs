@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os
 import csv
 import math
@@ -9,6 +10,7 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from loop_dhs.automl_image import AutoMLResult
 
+
 class LoopImageSet:
     """Class to hold set of JPEG images acquired via collectLoopImages operation.
 
@@ -17,34 +19,34 @@ class LoopImageSet:
         results (list): List of results from AutoML
 
     """
+
     def __init__(self):
         self.images = []
         self.results = []
         self.automl_results = []
         self.header = [
-                'LOOP_INFO',
-                'index',
-                'status',
-                'tipX',
-                'tipY',
-                'pinBaseX',
-                'fiberWidth',
-                'loopWidth',
-                'boxMinX',
-                'boxMaxX',
-                'boxMinY',
-                'boxMaxY',
-                'loopWidthX',
-                'isMicroMount',
-                'loopClass',
-                'loopScore',
-            ]
+            'LOOP_INFO',
+            'index',
+            'status',
+            'tipX',
+            'tipY',
+            'pinBaseX',
+            'fiberWidth',
+            'loopWidth',
+            'boxMinX',
+            'boxMaxX',
+            'boxMinY',
+            'boxMaxY',
+            'loopWidthX',
+            'isMicroMount',
+            'loopClass',
+            'loopScore',
+        ]
         self.data_frame = None
         self._number_of_images = None
 
     def add_image(self, image: bytes):
-        """Add a jpeg image to the list of images.
-        """
+        """Add a jpeg image to the list of images."""
         self.images.append(image)
         self._number_of_images = len(self.images)
 
@@ -112,7 +114,9 @@ class LoopImageSet:
 
         # function for genetic algorithm to minimize (sum of squared error)
         def sum_of_squared_error(parameter_tuple):
-            warnings.filterwarnings('ignore')  # do not print warnings by genetic algorithm
+            warnings.filterwarnings(
+                'ignore'
+            )  # do not print warnings by genetic algorithm
             val = func(x_data, *parameter_tuple)
             return np.sum((y_data - val) ** 2.0)
 
@@ -134,7 +138,9 @@ class LoopImageSet:
             parameter_bounds.append([minY, maxY])  # search bounds for offset
 
             # "seed" the np random number generator for repeatable results
-            result = differential_evolution(sum_of_squared_error, parameter_bounds, seed=42)
+            result = differential_evolution(
+                sum_of_squared_error, parameter_bounds, seed=42
+            )
             return result.x
 
         # by default, differential_evolution completes by calling curve_fit() using parameter bounds
@@ -244,9 +250,19 @@ class LoopImageSet:
             mu = scores_array.mean()
             median = np.median(scores_array)
             sigma = scores_array.std()
-            textstr = '\n'.join((f"mu: {mu:4.3}", f"median: {median:4.3}", f"sigma: {sigma:4.3}"))
+            textstr = '\n'.join(
+                (f'mu: {mu:4.3}', f'median: {median:4.3}', f'sigma: {sigma:4.3}')
+            )
             props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-            axes2.text(0.05, 0.95, textstr, transform=axes2.transAxes, fontsize=14, verticalalignment='top', bbox=props)
+            axes2.text(
+                0.05,
+                0.95,
+                textstr,
+                transform=axes2.transAxes,
+                fontsize=14,
+                verticalalignment='top',
+                bbox=props,
+            )
 
             fn = 'plot_automl_scores.png'
             results_plot = os.path.join(dir, fn)
@@ -259,12 +275,12 @@ class LoopImageSet:
     def pandas_plot(self, dir):
         self.data_frame = pd.DataFrame(self.results)
         self.data_frame.columns = self.header
-        output_file_name = "pandas_plot"
-        indices = self.data_frame["index"]
-        scores = self.data_frame["loopScore"]
-        tipx = self.data_frame["tipX"]
-        pinbasex = self.data_frame["pinBaseX"]
-        loopwidthx = self.data_frame["loopWidthX"]
+        output_file_name = 'pandas_plot'
+        indices = self.data_frame['index']
+        scores = self.data_frame['loopScore']
+        tipx = self.data_frame['tipX']
+        pinbasex = self.data_frame['pinBaseX']
+        loopwidthx = self.data_frame['loopWidthX']
 
         def plot(graph_width, graph_height):
             f = plt.figure(figsize=(graph_width / 100.0, graph_height / 100.0), dpi=100)
@@ -280,17 +296,27 @@ class LoopImageSet:
             axes.legend(loc='best')
 
             axes2 = f.add_subplot(212)
-            self.data_frame["loopScore"].hist(ax=axes2, bins=20)
-            mu = self.data_frame["loopScore"].mean()
-            median = self.data_frame["loopScore"].median()
-            sigma = self.data_frame["loopScore"].std()
+            self.data_frame['loopScore'].hist(ax=axes2, bins=20)
+            mu = self.data_frame['loopScore'].mean()
+            median = self.data_frame['loopScore'].median()
+            sigma = self.data_frame['loopScore'].std()
 
-            axes2.set_xlabel("AutoML confidence score")
-            axes2.set_ylabel("count")
+            axes2.set_xlabel('AutoML confidence score')
+            axes2.set_ylabel('count')
 
-            textstr = '\n'.join((f"mean: {mu:4.4}", f"median: {median:4.4}", f"std: {sigma:4.4}"))
+            textstr = '\n'.join(
+                (f'mean: {mu:4.4}', f'median: {median:4.4}', f'std: {sigma:4.4}')
+            )
             props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-            axes2.text(0.70, 0.95, textstr, transform=axes2.transAxes, fontsize=14, verticalalignment='top', bbox=props)
+            axes2.text(
+                0.70,
+                0.95,
+                textstr,
+                transform=axes2.transAxes,
+                fontsize=14,
+                verticalalignment='top',
+                bbox=props,
+            )
 
             fn = output_file_name + '.png'
             results_plot = os.path.join(dir, fn)

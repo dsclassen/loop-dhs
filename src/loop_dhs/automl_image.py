@@ -1,10 +1,12 @@
+# -*- coding: utf-8 -*-
 import os
 import cv2
 import math
 
 
-class AutoMLResult():
+class AutoMLResult:
     """Just the values to be sent to DCSS"""
+
     def __init__(self, result: list) -> None:
         self.type = 'LOOP_INFO'
         self.index = result[1]
@@ -24,11 +26,11 @@ class AutoMLResult():
         self.loopScore = result[15]
 
 
-class AutoMLImage():
+class AutoMLImage:
     def __init__(self, message, output_dir) -> None:
         self.index = message.index
         self.axis_file_name = 'loop_{:04}.jpeg'.format(self.index)
-        self.adorned_output_dir = os.path.join(output_dir, "bboxes")
+        self.adorned_output_dir = os.path.join(output_dir, 'bboxes')
         self.file_to_adorn = os.path.join(output_dir, self.axis_file_name)
 
         self.automl_score = message.loop_top_score
@@ -53,7 +55,6 @@ class AutoMLImage():
     def adorn_image(self):
         self.draw_bounding_box()
         # self.draw_automl_stats()
-
 
     def draw_bounding_box(self):
         """Draw the AutoML bounding box and loop tip crosshair overlaid on a JPEG image."""
@@ -92,7 +93,7 @@ class AutoMLImage():
         # volor in BGR
         red = (0, 0, 255)
         green = (0, 255, 0)
-        magenta = (255, 0 , 255)
+        magenta = (255, 0, 255)
 
         # Line thickness in px
         thickness = 1
@@ -103,53 +104,71 @@ class AutoMLImage():
         cross_hair_vert = [(tipX, tipY - crosshair_size), (tipX, tipY + crosshair_size)]
         cv2.line(image, cross_hair_horz[0], cross_hair_horz[1], green, 2)
         cv2.line(image, cross_hair_vert[0], cross_hair_vert[1], green, 2)
-        font                   = cv2.FONT_HERSHEY_SIMPLEX
-        fontScale              = 0.70
-        fontColor              = red
-        lineType               = 2
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        fontScale = 0.70
+        fontColor = red
+        lineType = 2
 
-        cv2.putText(image, self.automl_class,
-            (20,50),
+        cv2.putText(
+            image,
+            self.automl_class,
+            (20, 50),
             font,
             fontScale,
             fontColor,
             thickness,
-            lineType)
-        cv2.putText(image, ("TH: " + str(self.automl_score)),
-            (20,100),
+            lineType,
+        )
+        cv2.putText(
+            image,
+            ('TH: ' + str(self.automl_score)),
+            (20, 100),
             font,
             fontScale,
             fontColor,
             thickness,
-            lineType)
-        cv2.putText(image, ("tipX: " + str(tipX_frac)),
-            (240,50),
+            lineType,
+        )
+        cv2.putText(
+            image,
+            ('tipX: ' + str(tipX_frac)),
+            (240, 50),
             font,
             fontScale,
             green,
             thickness,
-            lineType)
-        cv2.putText(image, ("tipY: " + str(tipY_frac)),
-            (240,100),
+            lineType,
+        )
+        cv2.putText(
+            image,
+            ('tipY: ' + str(tipY_frac)),
+            (240, 100),
             font,
             fontScale,
             green,
             thickness,
-            lineType)
-        cv2.putText(image, ("loopW: " + str(loop_w)),
-            (450,50),
+            lineType,
+        )
+        cv2.putText(
+            image,
+            ('loopW: ' + str(loop_w)),
+            (450, 50),
             font,
             fontScale,
             red,
             thickness,
-            lineType)
-        cv2.putText(image, ("loopH: " + str(loop_h)),
-            (450,100),
+            lineType,
+        )
+        cv2.putText(
+            image,
+            ('loopH: ' + str(loop_h)),
+            (450, 100),
             font,
             fontScale,
             red,
             thickness,
-            lineType)
+            lineType,
+        )
 
         output_filename = 'automl_' + os.path.basename(self.file_to_adorn)
         outfile = os.path.join(self.adorned_output_dir, output_filename)
