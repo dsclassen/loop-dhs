@@ -5,13 +5,14 @@ repos:
   rev: 22.3.0
   hooks:
   - id: black
-    args: [--safe, --quiet, --skip-string-normalization]
+    language_version: python3.10
+    exclude: __version__.py
+    # args: [--safe, --quiet, --skip-string-normalization]
 
 # Syntax check and flake8 checks
 - repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v4.0.1
+  rev: v4.2.0
   hooks:
-  - id: check-ast
   - id: check-yaml
   - id: check-case-conflict
   - id: check-docstring-first
