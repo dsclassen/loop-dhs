@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
-import os
-import cv2
 import math
+import os
+
+import cv2
 
 
 class AutoMLResult:
     """Just the values to be sent to DCSS"""
 
     def __init__(self, result: list) -> None:
-        self.type = 'LOOP_INFO'
+        self.type = "LOOP_INFO"
         self.index = result[1]
         self.status = result[2]
         self.tipX = result[3]
@@ -29,8 +30,8 @@ class AutoMLResult:
 class AutoMLImage:
     def __init__(self, message, output_dir) -> None:
         self.index = message.index
-        self.axis_file_name = 'loop_{:04}.jpeg'.format(self.index)
-        self.adorned_output_dir = os.path.join(output_dir, 'bboxes')
+        self.axis_file_name = "loop_{:04}.jpeg".format(self.index)
+        self.adorned_output_dir = os.path.join(output_dir, "bboxes")
         self.file_to_adorn = os.path.join(output_dir, self.axis_file_name)
 
         self.automl_score = message.loop_top_score
@@ -121,7 +122,7 @@ class AutoMLImage:
         )
         cv2.putText(
             image,
-            ('TH: ' + str(self.automl_score)),
+            ("TH: " + str(self.automl_score)),
             (20, 100),
             font,
             fontScale,
@@ -131,7 +132,7 @@ class AutoMLImage:
         )
         cv2.putText(
             image,
-            ('tipX: ' + str(tipX_frac)),
+            ("tipX: " + str(tipX_frac)),
             (240, 50),
             font,
             fontScale,
@@ -141,7 +142,7 @@ class AutoMLImage:
         )
         cv2.putText(
             image,
-            ('tipY: ' + str(tipY_frac)),
+            ("tipY: " + str(tipY_frac)),
             (240, 100),
             font,
             fontScale,
@@ -151,7 +152,7 @@ class AutoMLImage:
         )
         cv2.putText(
             image,
-            ('loopW: ' + str(loop_w)),
+            ("loopW: " + str(loop_w)),
             (450, 50),
             font,
             fontScale,
@@ -161,7 +162,7 @@ class AutoMLImage:
         )
         cv2.putText(
             image,
-            ('loopH: ' + str(loop_h)),
+            ("loopH: " + str(loop_h)),
             (450, 100),
             font,
             fontScale,
@@ -170,6 +171,6 @@ class AutoMLImage:
             lineType,
         )
 
-        output_filename = 'automl_' + os.path.basename(self.file_to_adorn)
+        output_filename = "automl_" + os.path.basename(self.file_to_adorn)
         outfile = os.path.join(self.adorned_output_dir, output_filename)
         cv2.imwrite(outfile, image)

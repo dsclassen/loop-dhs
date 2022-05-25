@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
-import os
 import csv
 import math
-import numpy as np
-from scipy.optimize import curve_fit, minimize_scalar
-from scipy.optimize import differential_evolution
+import os
 import warnings
+
+import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
+from scipy.optimize import curve_fit, differential_evolution, minimize_scalar
+
 from loop_dhs.automl_image import AutoMLResult
 
 
@@ -25,22 +26,22 @@ class LoopImageSet:
         self.results = []
         self.automl_results = []
         self.header = [
-            'LOOP_INFO',
-            'index',
-            'status',
-            'tipX',
-            'tipY',
-            'pinBaseX',
-            'fiberWidth',
-            'loopWidth',
-            'boxMinX',
-            'boxMaxX',
-            'boxMinY',
-            'boxMaxY',
-            'loopWidthX',
-            'isMicroMount',
-            'loopClass',
-            'loopScore',
+            "LOOP_INFO",
+            "index",
+            "status",
+            "tipX",
+            "tipY",
+            "pinBaseX",
+            "fiberWidth",
+            "loopWidth",
+            "boxMinX",
+            "boxMaxX",
+            "boxMinY",
+            "boxMaxY",
+            "loopWidthX",
+            "isMicroMount",
+            "loopClass",
+            "loopScore",
         ]
         self.data_frame = None
         self._number_of_images = None
@@ -64,10 +65,10 @@ class LoopImageSet:
         return self._number_of_images
 
     def write_csv_file(self, dir):
-        fn = 'loop_info.csv'
+        fn = "loop_info.csv"
         results_file = os.path.join(dir, fn)
-        with open(results_file, 'w', newline='') as f:
-            writer = csv.writer(f, delimiter=',')
+        with open(results_file, "w", newline="") as f:
+            writer = csv.writer(f, delimiter=",")
 
             writer.writerow(self.header)
             for row in self.results:
@@ -115,7 +116,7 @@ class LoopImageSet:
         # function for genetic algorithm to minimize (sum of squared error)
         def sum_of_squared_error(parameter_tuple):
             warnings.filterwarnings(
-                'ignore'
+                "ignore"
             )  # do not print warnings by genetic algorithm
             val = func(x_data, *parameter_tuple)
             return np.sum((y_data - val) ** 2.0)
@@ -169,14 +170,14 @@ class LoopImageSet:
             axes = f.add_subplot(111)
 
             # raw data as a scatter plot
-            axes.scatter(x_data, y_data, color='black', marker='o', label='data')
+            axes.scatter(x_data, y_data, color="black", marker="o", label="data")
 
             # create data for the fitted equation plot
             x_model = np.linspace(min(x_data), max(x_data))
             y_model = func(x_model, *fitted_parameters)
 
             # now the model as a line plot
-            axes.plot(x_model, y_model, color='red', label='fit')
+            axes.plot(x_model, y_model, color="red", label="fit")
 
             # calculate the phi value for the max (face view)
             fm = lambda xData: -func(xData, *fitted_parameters)
@@ -185,14 +186,14 @@ class LoopImageSet:
             axes.plot(
                 res.x,
                 func(res.x, *fitted_parameters),
-                color='green',
-                marker='o',
+                color="green",
+                marker="o",
                 markersize=18,
             )
             max_x = str(round(math.degrees(res.x), 3))
             # max_y = str(round(-res.fun,3))
-            face_label = ''.join(['FACE: Phi = ', max_x, '\N{DEGREE SIGN}'])
-            props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+            face_label = "".join(["FACE: Phi = ", max_x, "\N{DEGREE SIGN}"])
+            props = dict(boxstyle="round", facecolor="wheat", alpha=0.5)
             axes.annotate(face_label, (res.x + 0.2, -res.fun), fontsize=14, bbox=props)
 
             # calculate the phi value for the min (edge view)
@@ -202,21 +203,21 @@ class LoopImageSet:
             axes.plot(
                 res.x,
                 func(res.x, *fitted_parameters),
-                color='magenta',
-                marker='o',
+                color="magenta",
+                marker="o",
                 markersize=18,
             )
             min_x = str(round(math.degrees(res.x), 2))
             # min_y = str(round(res.fun,2))
-            edge_label = ''.join(['EDGE: Phi = ', min_x, '\N{DEGREE SIGN}'])
-            props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+            edge_label = "".join(["EDGE: Phi = ", min_x, "\N{DEGREE SIGN}"])
+            props = dict(boxstyle="round", facecolor="wheat", alpha=0.5)
             axes.annotate(edge_label, (res.x + 0.2, res.fun), fontsize=14, bbox=props)
 
-            axes.set_xlabel('Image Phi Position (rad)')
-            axes.set_ylabel('Loop Width (px)')
-            axes.legend(loc='best')
+            axes.set_xlabel("Image Phi Position (rad)")
+            axes.set_ylabel("Loop Width (px)")
+            axes.legend(loc="best")
 
-            fn = 'plot_loop_widths.png'
+            fn = "plot_loop_widths.png"
             results_plot = os.path.join(dir, fn)
             f.savefig(results_plot)
 
@@ -235,14 +236,14 @@ class LoopImageSet:
             f = plt.figure(figsize=(graph_width / 100.0, graph_height / 100.0), dpi=100)
             axes = f.add_subplot(211)
 
-            axes.scatter(indices, scores, marker='o', label='score')
-            axes.scatter(indices, tipx, marker='o', label='tipx')
-            axes.scatter(indices, pinbasex, marker='o', label='pinbasex')
-            axes.scatter(indices, loopwidthx, marker='o', label='loopwidthx')
+            axes.scatter(indices, scores, marker="o", label="score")
+            axes.scatter(indices, tipx, marker="o", label="tipx")
+            axes.scatter(indices, pinbasex, marker="o", label="pinbasex")
+            axes.scatter(indices, loopwidthx, marker="o", label="loopwidthx")
 
-            axes.set_xlabel('Index')  # X axis data label
-            axes.set_ylabel('')  # Y axis data label
-            axes.legend(loc='best')
+            axes.set_xlabel("Index")  # X axis data label
+            axes.set_ylabel("")  # Y axis data label
+            axes.legend(loc="best")
 
             axes2 = f.add_subplot(212)
             scores_array = np.asarray(scores)
@@ -250,21 +251,21 @@ class LoopImageSet:
             mu = scores_array.mean()
             median = np.median(scores_array)
             sigma = scores_array.std()
-            textstr = '\n'.join(
-                (f'mu: {mu:4.3}', f'median: {median:4.3}', f'sigma: {sigma:4.3}')
+            textstr = "\n".join(
+                (f"mu: {mu:4.3}", f"median: {median:4.3}", f"sigma: {sigma:4.3}")
             )
-            props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+            props = dict(boxstyle="round", facecolor="wheat", alpha=0.5)
             axes2.text(
                 0.05,
                 0.95,
                 textstr,
                 transform=axes2.transAxes,
                 fontsize=14,
-                verticalalignment='top',
+                verticalalignment="top",
                 bbox=props,
             )
 
-            fn = 'plot_automl_scores.png'
+            fn = "plot_automl_scores.png"
             results_plot = os.path.join(dir, fn)
             f.savefig(results_plot)
 
@@ -275,50 +276,50 @@ class LoopImageSet:
     def pandas_plot(self, dir):
         self.data_frame = pd.DataFrame(self.results)
         self.data_frame.columns = self.header
-        output_file_name = 'pandas_plot'
-        indices = self.data_frame['index']
-        scores = self.data_frame['loopScore']
-        tipx = self.data_frame['tipX']
-        pinbasex = self.data_frame['pinBaseX']
-        loopwidthx = self.data_frame['loopWidthX']
+        output_file_name = "pandas_plot"
+        indices = self.data_frame["index"]
+        scores = self.data_frame["loopScore"]
+        tipx = self.data_frame["tipX"]
+        pinbasex = self.data_frame["pinBaseX"]
+        loopwidthx = self.data_frame["loopWidthX"]
 
         def plot(graph_width, graph_height):
             f = plt.figure(figsize=(graph_width / 100.0, graph_height / 100.0), dpi=100)
             axes = f.add_subplot(211)
 
-            axes.scatter(indices, scores, marker='o', label='score')
-            axes.scatter(indices, tipx, marker='o', label='tipx')
-            axes.scatter(indices, pinbasex, marker='o', label='pinbasex')
-            axes.scatter(indices, loopwidthx, marker='o', label='loopwidthx')
+            axes.scatter(indices, scores, marker="o", label="score")
+            axes.scatter(indices, tipx, marker="o", label="tipx")
+            axes.scatter(indices, pinbasex, marker="o", label="pinbasex")
+            axes.scatter(indices, loopwidthx, marker="o", label="loopwidthx")
 
-            axes.set_xlabel('Index')
-            axes.set_ylabel('')
-            axes.legend(loc='best')
+            axes.set_xlabel("Index")
+            axes.set_ylabel("")
+            axes.legend(loc="best")
 
             axes2 = f.add_subplot(212)
-            self.data_frame['loopScore'].hist(ax=axes2, bins=20)
-            mu = self.data_frame['loopScore'].mean()
-            median = self.data_frame['loopScore'].median()
-            sigma = self.data_frame['loopScore'].std()
+            self.data_frame["loopScore"].hist(ax=axes2, bins=20)
+            mu = self.data_frame["loopScore"].mean()
+            median = self.data_frame["loopScore"].median()
+            sigma = self.data_frame["loopScore"].std()
 
-            axes2.set_xlabel('AutoML confidence score')
-            axes2.set_ylabel('count')
+            axes2.set_xlabel("AutoML confidence score")
+            axes2.set_ylabel("count")
 
-            textstr = '\n'.join(
-                (f'mean: {mu:4.4}', f'median: {median:4.4}', f'std: {sigma:4.4}')
+            textstr = "\n".join(
+                (f"mean: {mu:4.4}", f"median: {median:4.4}", f"std: {sigma:4.4}")
             )
-            props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+            props = dict(boxstyle="round", facecolor="wheat", alpha=0.5)
             axes2.text(
                 0.70,
                 0.95,
                 textstr,
                 transform=axes2.transAxes,
                 fontsize=14,
-                verticalalignment='top',
+                verticalalignment="top",
                 bbox=props,
             )
 
-            fn = output_file_name + '.png'
+            fn = output_file_name + ".png"
             results_plot = os.path.join(dir, fn)
             f.savefig(results_plot)
 

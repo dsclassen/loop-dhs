@@ -2,80 +2,77 @@
 """
 loopDHS
 """
-__author__ = 'Scott Classen'
-__copyright__ = 'Scott Classen'
-__license__ = 'mit'
+__author__ = "Scott Classen"
+__copyright__ = "Scott Classen"
+__license__ = "mit"
 
-import os
+import glob
+import io
 import logging
-from logging.handlers import RotatingFileHandler
-import coloredlogs
-import verboselogs
+import os
+import re
 import signal
 import sys
-import yaml
-import io
-import glob
-import re
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from pydhsfw.processors import Context, register_message_handler
-from pydhsfw.dhs import Dhs, DhsInit, DhsStart, DhsContext
+import coloredlogs
+import verboselogs
+import yaml
+from pydhsfw.automl import AutoMLPredictRequest, AutoMLPredictResponse
+from pydhsfw.axis import AxisImageRequestMessage, AxisImageResponseMessage
 from pydhsfw.dcss import (
     DcssContext,
-    DcssStoCSendClientType,
     DcssHtoSClientIsHardware,
+    DcssHtoSOperationCompleted,
+    DcssHtoSOperationUpdate,
+    DcssStoCSendClientType,
     DcssStoHRegisterOperation,
     DcssStoHStartOperation,
-    DcssHtoSOperationUpdate,
-    DcssHtoSOperationCompleted,
     register_dcss_start_operation_handler,
 )
-from pydhsfw.automl import AutoMLPredictRequest, AutoMLPredictResponse
+from pydhsfw.dhs import Dhs, DhsContext, DhsInit, DhsStart
 from pydhsfw.jpeg_receiver import JpegReceiverImagePostRequestMessage
-from pydhsfw.axis import AxisImageRequestMessage, AxisImageResponseMessage
+from pydhsfw.processors import Context, register_message_handler
 
 from loop_dhs import __version__
 from loop_dhs.automl_image import AutoMLImage
+from loop_dhs.loop_dhs_config import LoopDHSConfig, LoopDHSState
 from loop_dhs.loop_image import CollectLoopImageState
-from loop_dhs.loop_dhs_config import (
-    LoopDHSState,
-    LoopDHSConfig,
-)
 
-_logger = verboselogs.VerboseLogger('loopDHS')
+_logger = verboselogs.VerboseLogger("loopDHS")
 
 
-@register_message_handler('dhs_init')
+@register_message_handler("dhs_init")
 def dhs_init(message: DhsInit, context: DhsContext):
     """DHS initialization handler function."""
     parser = message.parser
 
     parser.add_argument(
-        '--version',
-        action='version',
-        version='loopDHS version {ver}'.format(ver=__version__),
+        "--version",
+        action="version",
+        version="loopDHS version {ver}".format(ver=__version__),
     )
     parser.add_argument(
-        dest='beamline',
-        help='Beamline Name (e.g. BL-831 or SIM831). This determines which beamline-specific \
-              config file to load from config directory.',
-        metavar='Beamline',
+        dest="beamline",
+        help="Beamline Name (e.g. BL-831 or SIM831). This determines which beamline-specific \
+              config file to load from config directory.",
+        metavar="Beamline",
     )
     parser.add_argument(
-        dest='dhs_name',
-        help='Optional alternate DHS Name (e.g. what dcss is expecting this DHS to be named). \
-              If omitted then this value is set to be the name of this script.',
-        metavar='DHS Name',
-        nargs='?',
+        dest="dhs_name",
+        help="Optional alternate DHS Name (e.g. what dcss is expecting this DHS to be named). \
+              If omitted then this value is set to be the name of this script.",
+        metavar="DHS Name",
+        nargs="?",
         default=Path(__file__).stem,
     )
     parser.add_argument(
-        '-v',
-        dest='verbosity',
-        help='Sets the chattiness of logging (none to -vvvv)',
-        action='count',
+        "-v",
+        dest="verbosity",
+        help="Sets the chattiness of logging (none to -vvvv)",
+        action="count",
         default=0,
     )
 
@@ -83,11 +80,11 @@ def dhs_init(message: DhsInit, context: DhsContext):
 
     logfile = configure_logging(args.verbosity)
 
-    conf_file = 'config/' + args.beamline + '.config'
-    with open(conf_file, 'r') as f:
+    conf_file = "config/" + args.beamline + ".config"
+    with open(conf_file, "r") as f:
         yconf = yaml.safe_load(f)
         context.config = LoopDHSConfig(yconf)
-    context.config['DHS'] = args.dhs_name
+    context.config["DHS"] = args.dhs_name
 
     loglevel_name = logging.getLevelName(_logger.getEffectiveLevel())
 
@@ -96,12 +93,12 @@ def dhs_init(message: DhsInit, context: DhsContext):
     if context.config.save_images:
         context.config.make_debug_dir()
 
-    _logger.success('=============================================')
-    _logger.success('Initializing DHS')
-    _logger.success(f'Start Time:         {datetime.now()}')
-    _logger.success(f'Logging level:      {loglevel_name}')
-    _logger.success(f'Log File:           {logfile}')
-    _logger.success(f'Config file:        {conf_file}')
+    _logger.success("=============================================")
+    _logger.success("Initializing DHS")
+    _logger.success(f"Start Time:         {datetime.now()}")
+    _logger.success(f"Logging level:      {loglevel_name}")
+    _logger.success(f"Log File:           {logfile}")
+    _logger.success(f"Config file:        {conf_file}")
     _logger.success(f'Initializing:       {context.config["DHS"]}')
     _logger.success(f'DCSS HOST:          {context.config["dcss.host"]}')
     _logger.success(f'     PORT:          {context.config["dcss.port"]}')
@@ -112,85 +109,85 @@ def dhs_init(message: DhsInit, context: DhsContext):
     )
     _logger.success(f'AXIS HOST:          {context.config["loopdhs.axis.host"]}')
     _logger.success(f'     PORT:          {context.config["loopdhs.axis.port"]}')
-    _logger.success('=============================================')
+    _logger.success("=============================================")
 
 
-@register_message_handler('dhs_start')
+@register_message_handler("dhs_start")
 def dhs_start(message: DhsStart, context: DhsContext):
     """DHS start handler"""
     # Connect to DCSS
-    context.create_connection('dcss_conn', 'dcss', context.config.dcss_url)
-    context.get_connection('dcss_conn').connect()
+    context.create_connection("dcss_conn", "dcss", context.config.dcss_url)
+    context.get_connection("dcss_conn").connect()
 
     # Connect to GCP AutoML docker service
     context.create_connection(
-        'automl_conn',
-        'automl',
+        "automl_conn",
+        "automl",
         context.config.automl_url,
-        {'heartbeat_path': '/v1/models/default'},
+        {"heartbeat_path": "/v1/models/default"},
     )
-    context.get_connection('automl_conn').connect()
+    context.get_connection("automl_conn").connect()
 
     # Connect to an AXIS Video Server
-    context.create_connection('axis_conn', 'axis', context.config.axis_url)
-    context.get_connection('axis_conn').connect()
+    context.create_connection("axis_conn", "axis", context.config.axis_url)
+    context.get_connection("axis_conn").connect()
 
     # Create a jpeg receiving port. Only connect when ready to receive images.
     context.create_connection(
-        'jpeg_receiver_conn', 'jpeg_receiver', context.config.jpeg_receiver_url
+        "jpeg_receiver_conn", "jpeg_receiver", context.config.jpeg_receiver_url
     )
     # context.get_connection('jpeg_receiver_conn').connect()
 
 
-@register_message_handler('stoc_send_client_type')
+@register_message_handler("stoc_send_client_type")
 def dcss_send_client_type(message: DcssStoCSendClientType, context: Context):
     """Send client type to DCSS during initial handshake."""
-    context.get_connection('dcss_conn').send(
-        DcssHtoSClientIsHardware(context.config['DHS'])
+    context.get_connection("dcss_conn").send(
+        DcssHtoSClientIsHardware(context.config["DHS"])
     )
 
 
-@register_message_handler('stoh_register_operation')
+@register_message_handler("stoh_register_operation")
 def dcss_reg_operation(message: DcssStoHRegisterOperation, context: Context):
     """Register the operations that DCSS has assigned to thsi DHS."""
     # Need to deal with unimplemented operations
-    _logger.success(f'REGISTER: {message}')
+    _logger.success(f"REGISTER: {message}")
 
 
-@register_message_handler('stoh_start_operation')
+@register_message_handler("stoh_start_operation")
 def dcss_start_operation(message: DcssStoHStartOperation, context: Context):
     """Handle incoming requests to start an operation."""
-    _logger.info(f'FROM DCSS: {message}')
+    _logger.info(f"FROM DCSS: {message}")
     op = message.operation_name
     opid = message.operation_handle
-    _logger.debug(f'OPERATION: {op}, HANDLE: {opid}')
+    _logger.debug(f"OPERATION: {op}, HANDLE: {opid}")
 
 
-@register_dcss_start_operation_handler('testAutoML')
+@register_dcss_start_operation_handler("testAutoML")
 def predict_one(message: DcssStoHStartOperation, context: DcssContext):
     """
     The operation is for testing AutoML. It reads a single image of a nylon
     loop from the tests directory and sends it to AutoML.
     """
     activeOps = context.get_active_operations(message.operation_name)
-    _logger.debug(f'Active operations pre-completed={activeOps}')
-    context.get_connection('dcss_conn').send(
+    _logger.debug(f"Active operations pre-completed={activeOps}")
+    context.get_connection("dcss_conn").send(
         DcssHtoSOperationUpdate(
             message.operation_name,
             message.operation_handle,
-            'about to predict one test image',
+            "about to predict one test image",
         )
     )
-    image_key = 'THE-TEST-IMAGE'
-    filename = 'tests/loop_nylon.jpg'
-    with io.open(filename, 'rb') as image_file:
+    image_key = "THE-TEST-IMAGE"
+    filename = "tests/loop_nylon.jpg"
+    with io.open(filename, "rb") as image_file:
         binary_image = image_file.read()
-    context.get_connection('automl_conn').send(
+    context.get_connection("automl_conn").send(
         AutoMLPredictRequest(image_key, binary_image)
     )
 
 
-@register_dcss_start_operation_handler('collectLoopImages')
+@register_dcss_start_operation_handler("collectLoopImages")
 def collect_loop_images(message: DcssStoHStartOperation, context: DcssContext):
     """
     Collects a set of JPEG images for analysis by AutoML.
@@ -211,36 +208,36 @@ def collect_loop_images(message: DcssStoHStartOperation, context: DcssContext):
     context.state.collect_images = True
 
     # 3. Open the JPEG receiver port.
-    context.get_connection('jpeg_receiver_conn').connect()
+    context.get_connection("jpeg_receiver_conn").connect()
 
     # make a RESULTS directory for this instance of the operation.
     if context.config.save_images:
         if os.path.exists(context.config.timestamped_debug_dir):
-            opDir = ''.join([opName, opHandle.replace('.', '_')])
+            opDir = "".join([opName, opHandle.replace(".", "_")])
             operationResultsDir = os.path.join(
                 context.config.timestamped_debug_dir, opDir
             )
-            boundingBoxDir = os.path.join(operationResultsDir, 'bboxes')
+            boundingBoxDir = os.path.join(operationResultsDir, "bboxes")
 
-            activeOp = context.get_active_operations(operation_name='collectLoopImages')
+            activeOp = context.get_active_operations(operation_name="collectLoopImages")
             activeOp[0].state.results_dir = operationResultsDir
 
             os.makedirs(operationResultsDir)
             os.makedirs(boundingBoxDir)
-            _logger.debug(f'SAVING RAW JPEG IMAGES TO: {operationResultsDir}')
-            _logger.debug(f'SAVING OPENCV ADORNED IMAGES TO: {operationResultsDir}')
+            _logger.debug(f"SAVING RAW JPEG IMAGES TO: {operationResultsDir}")
+            _logger.debug(f"SAVING OPENCV ADORNED IMAGES TO: {operationResultsDir}")
         else:
-            _logger.error('RESULTS FOLDER MISSING')
+            _logger.error("RESULTS FOLDER MISSING")
 
     # 4. Send operation update message to DCSS to trigger sample rotation and axis server.
-    context.get_connection('dcss_conn').send(
+    context.get_connection("dcss_conn").send(
         DcssHtoSOperationUpdate(
-            message.operation_name, message.operation_handle, 'start_oscillation'
+            message.operation_name, message.operation_handle, "start_oscillation"
         )
     )
 
 
-@register_dcss_start_operation_handler('getLoopTip')
+@register_dcss_start_operation_handler("getLoopTip")
 def get_loop_tip(message: DcssStoHStartOperation, context: DcssContext):
     """
     Returns the position of the right-most point of a loop.
@@ -258,12 +255,12 @@ def get_loop_tip(message: DcssStoHStartOperation, context: DcssContext):
     #
     # 1. Request single jpeg image from axis video server. takes camera as arg.
     cam = str(context.config.axis_camera)
-    context.get_connection('axis_conn').send(
-        AxisImageRequestMessage(''.join(['camera=', cam]))
+    context.get_connection("axis_conn").send(
+        AxisImageRequestMessage("".join(["camera=", cam]))
     )
 
 
-@register_dcss_start_operation_handler('getLoopInfo')
+@register_dcss_start_operation_handler("getLoopInfo")
 def get_loop_info(message: DcssStoHStartOperation, context: DcssContext):
     """
     This operation should return full suite of info about a single image.
@@ -271,12 +268,12 @@ def get_loop_info(message: DcssStoHStartOperation, context: DcssContext):
     DCSS may send a single arg pinBaseSizeHint, but I think we can ignore it.
     """
     cam = str(context.config.axis_camera)
-    context.get_connection('axis_conn').send(
-        AxisImageRequestMessage(''.join(['camera=', cam]))
+    context.get_connection("axis_conn").send(
+        AxisImageRequestMessage("".join(["camera=", cam]))
     )
 
 
-@register_dcss_start_operation_handler('stopCollectLoopImages')
+@register_dcss_start_operation_handler("stopCollectLoopImages")
 def stop_collect_loop_images(message: DcssStoHStartOperation, context: DcssContext):
     """
     Sets a global flag to signal collectLoopImages to stop and optionally to
@@ -290,14 +287,14 @@ def stop_collect_loop_images(message: DcssStoHStartOperation, context: DcssConte
     # context.get_connection('jpeg_receiver_conn').disconnect()
 
     # 3. Send operation completed message to DCSS
-    context.get_connection('dcss_conn').send(
+    context.get_connection("dcss_conn").send(
         DcssHtoSOperationCompleted(
-            message.operation_name, message.operation_handle, 'normal', 'flag set'
+            message.operation_name, message.operation_handle, "normal", "flag set"
         )
     )
 
 
-@register_dcss_start_operation_handler('reboxLoopImage')
+@register_dcss_start_operation_handler("reboxLoopImage")
 def rebox_loop_image(message: DcssStoHStartOperation, context: DcssContext):
     """
     Refine the loop bounding box. I'm not sure of it's use with AutoML loop
@@ -318,40 +315,40 @@ def rebox_loop_image(message: DcssStoHStartOperation, context: DcssContext):
     """
     rebox_image = int(message.operation_args[0])
     previous_results = context.state.rebox_images.results[rebox_image]
-    _logger.info(f'REQUEST REBOX OF IMAGE: {rebox_image} RESULTS: {previous_results}')
+    _logger.info(f"REQUEST REBOX OF IMAGE: {rebox_image} RESULTS: {previous_results}")
     index = previous_results[1]
     loopWidth = previous_results[7]
     boxMinY = previous_results[10]
     boxMaxY = previous_results[11]
     results = [index, boxMinY, boxMaxY, loopWidth]
     # transmorgrify into space-seperated list for Tcl.
-    return_msg = ' '.join(map(str, results))
-    context.get_connection('dcss_conn').send(
+    return_msg = " ".join(map(str, results))
+    context.get_connection("dcss_conn").send(
         DcssHtoSOperationCompleted(
-            message.operation_name, message.operation_handle, 'normal', return_msg
+            message.operation_name, message.operation_handle, "normal", return_msg
         )
     )
 
 
-@register_message_handler('automl_predict_response')
+@register_message_handler("automl_predict_response")
 def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext):
     """
     Process inference results returned from AutoML.
     """
 
     activeOps = context.get_active_operations()
-    _logger.debug(f'Active operations pre-completed={activeOps}')
+    _logger.debug(f"Active operations pre-completed={activeOps}")
 
     # AutoML results filtering.
     # fail immediatly if score for top object is below threshold.
     # I think this happens if jpeg is completely blank.
     if message.get_score(0) < context.config.automl_thhreshold:
         _logger.warning(
-            f'AUTOML SCORE: {message.get_score(0)} '
-            f'BELOW THRESHOLD: {context.config.automl_thhreshold}'
+            f"AUTOML SCORE: {message.get_score(0)} "
+            f"BELOW THRESHOLD: {context.config.automl_thhreshold}"
         )
-        status = 'failed'
-        result = ['no loop or pin detected, AutoML score: ', message.get_score(0)]
+        status = "failed"
+        result = ["no loop or pin detected, AutoML score: ", message.get_score(0)]
 
     else:
         # look at the top N results for a pin and a loop object.
@@ -360,29 +357,29 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
             object = message.get_detection_class_as_text(i)
             score = message.get_score(i)
 
-            if object == 'pin' and message.pin_num is None:
+            if object == "pin" and message.pin_num is None:
                 message.pin_num = i
-                _logger.info(f'AUTOML RESULT #{i} IS A: {object: <8} SCORE: {score}')
+                _logger.info(f"AUTOML RESULT #{i} IS A: {object: <8} SCORE: {score}")
 
             elif (
-                object == 'mitegen' or object == 'nylon'
+                object == "mitegen" or object == "nylon"
             ) and message.loop_num is None:
                 message.loop_num = i
                 if score < context.config.automl_thhreshold:
                     _logger.info(
-                        f'AUTOML RESULT #{i} IS A: {object: <8} SCORE: {score} '
-                        f'BELOW TH: {context.config.automl_thhreshold}'
+                        f"AUTOML RESULT #{i} IS A: {object: <8} SCORE: {score} "
+                        f"BELOW TH: {context.config.automl_thhreshold}"
                     )
                 else:
                     _logger.info(
-                        f'AUTOML RESULT #{i} IS A: {object: <8} SCORE: {score}'
+                        f"AUTOML RESULT #{i} IS A: {object: <8} SCORE: {score}"
                     )
-            _logger.spam(f'{i} {object=} {score=}')
+            _logger.spam(f"{i} {object=} {score=}")
 
         # if no loop found in top N results
         if message.loop_num is None:
             _logger.warning(
-                f'NO LOOP IN TOP {context.config.automl_scan_n_results} AUTOML RESULTS. SETTING TO 0'
+                f"NO LOOP IN TOP {context.config.automl_scan_n_results} AUTOML RESULTS. SETTING TO 0"
             )
             message.loop_num = 0
 
@@ -391,7 +388,7 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
         #     message.pin_num = 0
 
     for ao in activeOps:
-        if ao.operation_name == 'testAutoML':
+        if ao.operation_name == "testAutoML":
             result = [
                 message.image_key,
                 message.loop_top_score,
@@ -399,35 +396,35 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                 message.loop_top_classification,
                 message.loop_top_score,
             ]
-            msg = ' '.join(map(str, result))
-            _logger.info(f'SEND TO DCSS: {msg}')
-            context.get_connection('dcss_conn').send(
+            msg = " ".join(map(str, result))
+            _logger.info(f"SEND TO DCSS: {msg}")
+            context.get_connection("dcss_conn").send(
                 DcssHtoSOperationCompleted(
                     ao.operation_name, ao.operation_handle, status, msg
                 )
             )
 
-        elif ao.operation_name == 'getLoopTip':
+        elif ao.operation_name == "getLoopTip":
             result = [message.tip_x, message.tip_y]
-            msg = ' '.join(map(str, result))
-            _logger.info(f'SEND TO DCSS: {msg}')
-            context.get_connection('dcss_conn').send(
+            msg = " ".join(map(str, result))
+            _logger.info(f"SEND TO DCSS: {msg}")
+            context.get_connection("dcss_conn").send(
                 DcssHtoSOperationCompleted(
                     ao.operation_name, ao.operation_handle, message.status, msg
                 )
             )
 
-        elif ao.operation_name == 'getLoopInfo':
+        elif ao.operation_name == "getLoopInfo":
 
-            msg = ' '.join(map(str, message.loop_info_result))
-            _logger.info(f'SEND TO DCSS: {msg}')
-            context.get_connection('dcss_conn').send(
+            msg = " ".join(map(str, message.loop_info_result))
+            _logger.info(f"SEND TO DCSS: {msg}")
+            context.get_connection("dcss_conn").send(
                 DcssHtoSOperationCompleted(
-                    ao.operation_name, ao.operation_handle, 'normal', msg
+                    ao.operation_name, ao.operation_handle, "normal", msg
                 )
             )
 
-        elif ao.operation_name == 'collectLoopImages':
+        elif ao.operation_name == "collectLoopImages":
 
             # Increment AutoML responses received.
             ao.state.automl_responses_received += 1
@@ -440,15 +437,15 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
             # if received < expected_frames and collect is True:
             if received < expected_frames:
                 _logger.debug(
-                    f'OPERATION UPDATE SENT TO AutoML: {sent} '
-                    f'RECEIVED FROM AutoML: {received} '
-                    f'COLLECT: {collect} INDEX: {message.index}'
+                    f"OPERATION UPDATE SENT TO AutoML: {sent} "
+                    f"RECEIVED FROM AutoML: {received} "
+                    f"COLLECT: {collect} INDEX: {message.index}"
                 )
 
-                msg = ' '.join(map(str, message.dcss_result))
+                msg = " ".join(map(str, message.dcss_result))
                 ao.state.loop_images.add_results(message.dcss_result)
-                _logger.success(f'OPERATION UPDATE SEND TO DCSS1: {msg}')
-                context.get_connection('dcss_conn').send(
+                _logger.success(f"OPERATION UPDATE SEND TO DCSS1: {msg}")
+                context.get_connection("dcss_conn").send(
                     DcssHtoSOperationUpdate(ao.operation_name, ao.operation_handle, msg)
                 )
 
@@ -458,36 +455,36 @@ def automl_predict_response(message: AutoMLPredictResponse, context: DcssContext
                     image.adorn_image()
             # Send Operation Complete message.
             elif received >= expected_frames:
-                _logger.success(f'SENT: {sent} RECEIVED: {received} COLLECT: {collect}')
+                _logger.success(f"SENT: {sent} RECEIVED: {received} COLLECT: {collect}")
                 if context.config.save_images:
                     ao.state.loop_images.write_csv_file(ao.state.results_dir)
                     ao.state.loop_images.plot_loop_widths(ao.state.results_dir)
                     ao.state.loop_images.pandas_plot(ao.state.results_dir)
                 context.state.rebox_images = ao.state.loop_images
-                _logger.info('SEND OPERATION COMPLETE TO DCSS')
-                context.get_connection('dcss_conn').send(
+                _logger.info("SEND OPERATION COMPLETE TO DCSS")
+                context.get_connection("dcss_conn").send(
                     DcssHtoSOperationCompleted(
-                        ao.operation_name, ao.operation_handle, 'normal', 'done'
+                        ao.operation_name, ao.operation_handle, "normal", "done"
                     )
                 )
             # Not sure we can ever get to this bit of code
             else:
-                _logger.warning('=====================================================')
-                _logger.warning(f'SENT: {sent} RECEIVED: {received} COLLECT: {collect}')
-                _logger.warning('=====================================================')
+                _logger.warning("=====================================================")
+                _logger.warning(f"SENT: {sent} RECEIVED: {received} COLLECT: {collect}")
+                _logger.warning("=====================================================")
 
     activeOps = context.get_active_operations()
-    _logger.debug(f'Active operations post-completed={activeOps}')
+    _logger.debug(f"Active operations post-completed={activeOps}")
 
 
-@register_message_handler('jpeg_receiver_image_post_request')
+@register_message_handler("jpeg_receiver_image_post_request")
 def jpeg_receiver_image_post_request(
     message: JpegReceiverImagePostRequestMessage, context: DhsContext
 ):
     """Handles JPEG images arriving on the jpeg receiver port
     then sends them to AutoMLPredictRequest."""
     # _logger.spam(message.file)
-    activeOps = context.get_active_operations(operation_name='collectLoopImages')
+    activeOps = context.get_active_operations(operation_name="collectLoopImages")
 
     if len(activeOps) > 0:
         activeOp = activeOps[0]
@@ -495,44 +492,44 @@ def jpeg_receiver_image_post_request(
         opHandle = activeOp.operation_handle
         resultsDir = activeOp.state.results_dir
 
-        _logger.debug(f'ADD {len(message.file)} BYTE IMAGE TO JPEG LIST')
+        _logger.debug(f"ADD {len(message.file)} BYTE IMAGE TO JPEG LIST")
         activeOp.state.loop_images.add_image(message.file)
 
         if context.config.save_images:
             save_jpeg(message.file, activeOp.state.image_index, resultsDir)
 
-        image_key = ':'.join([opName, opHandle, str(activeOp.state.image_index)])
+        image_key = ":".join([opName, opHandle, str(activeOp.state.image_index)])
 
-        context.get_connection('automl_conn').send(
+        context.get_connection("automl_conn").send(
             AutoMLPredictRequest(image_key, message.file)
         )
-        _logger.debug(f'IMAGE_KEY: {image_key}')
+        _logger.debug(f"IMAGE_KEY: {image_key}")
         # increment image index which we use as a count of images SENT.
         activeOp.state.image_index += 1
     else:
         _logger.warning(
-            'RECEVIED JPEG, BUT NOT DOING ANYTHING WITH IT. '
-            'no active collectLoopImages operation.'
+            "RECEVIED JPEG, BUT NOT DOING ANYTHING WITH IT. "
+            "no active collectLoopImages operation."
         )
 
 
-@register_message_handler('axis_image_response')
+@register_message_handler("axis_image_response")
 def axis_image_response(message: AxisImageResponseMessage, context: DhsContext):
     """Handles a single JPEG image from Axis video server for both getLoopTip
     and getLoopInfo operations."""
 
-    _logger.debug(f'RECEIVED {message.file_length} BYTE IMAGE FROM AXIS VIDEO SERVER.')
+    _logger.debug(f"RECEIVED {message.file_length} BYTE IMAGE FROM AXIS VIDEO SERVER.")
     activeOps = context.get_active_operations()
     for ao in activeOps:
-        if ao.operation_name == 'getLoopTip' or 'getLoopInfo':
+        if ao.operation_name == "getLoopTip" or "getLoopInfo":
             opName = ao.operation_name
             opHandle = ao.operation_handle
-            image_key = ':'.join([opName, opHandle])
-            context.get_connection('automl_conn').send(
+            image_key = ":".join([opName, opHandle])
+            context.get_connection("automl_conn").send(
                 AutoMLPredictRequest(image_key, message.file)
             )
         else:
-            _logger.warning('RECEVIED JPEG, BUT NOT DOING ANYTHING WITH IT.')
+            _logger.warning("RECEVIED JPEG, BUT NOT DOING ANYTHING WITH IT.")
 
 
 def save_jpeg(image: bytes, index: int = None, save_dir: str = None):
@@ -542,24 +539,24 @@ def save_jpeg(image: bytes, index: int = None, save_dir: str = None):
     """
     new_num = index
     if new_num is None:
-        current_images = glob.glob(''.join([save_dir, '/*.jpeg']))
+        current_images = glob.glob("".join([save_dir, "/*.jpeg"]))
         num_list = [0]
         for img in current_images:
             i = os.path.splitext(img)[0]
             try:
-                num = re.findall('[0-9]+$', i)[0]
+                num = re.findall("[0-9]+$", i)[0]
                 num_list.append(int(num))
             except IndexError:
                 pass
         num_list = sorted(num_list)
         new_num = num_list[-1] + 1
 
-    save_name = '{}/loop_{:04}.jpeg'.format(save_dir, new_num)
+    save_name = "{}/loop_{:04}.jpeg".format(save_dir, new_num)
 
-    f = open(save_name, 'w+b')
+    f = open(save_name, "w+b")
     f.write(image)
     f.close()
-    _logger.debug(f'SAVED JPEG IMAGE FILE: {save_name}')
+    _logger.debug(f"SAVED JPEG IMAGE FILE: {save_name}")
 
 
 def configure_logging(verbosity):
@@ -584,15 +581,15 @@ def configure_logging(verbosity):
 
     # verboselogs.install()
 
-    logdir = 'logs'
+    logdir = "logs"
 
     if not os.path.exists(logdir):
         os.makedirs(logdir)
 
-    logfile = os.path.join(logdir, Path(__file__).stem + '.log')
+    logfile = os.path.join(logdir, Path(__file__).stem + ".log")
     handler = RotatingFileHandler(logfile, maxBytes=100000, backupCount=50)
     formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
     handler.setFormatter(formatter)
     handler.setLevel(loglevel)
@@ -610,11 +607,11 @@ def configure_logging(verbosity):
 
     coloredlogs.install(
         level=loglevel,
-        fmt='%(asctime)s,%(msecs)03d '
-        + '%(hostname)s '
-        + '%(name)s[%(funcName)s():%(lineno)d] '
-        + '%(levelname)s '
-        + '%(message)s ',
+        fmt="%(asctime)s,%(msecs)03d "
+        + "%(hostname)s "
+        + "%(name)s[%(funcName)s():%(lineno)d] "
+        + "%(levelname)s "
+        + "%(message)s ",
     )
 
     # LOG LEVELS AVAILABLE IN verboselogs module
@@ -657,5 +654,5 @@ def main(args):
     dhs.wait(sigs)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     run()
