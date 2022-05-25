@@ -191,7 +191,7 @@ class LoopImageSet:
             )
             max_x = str(round(math.degrees(res.x), 3))
             # max_y = str(round(-res.fun,3))
-            face_label = ''.join(['FACE: Phi = ', max_x, u'\N{DEGREE SIGN}'])
+            face_label = ''.join(['FACE: Phi = ', max_x, '\N{DEGREE SIGN}'])
             props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
             axes.annotate(face_label, (res.x + 0.2, -res.fun), fontsize=14, bbox=props)
 
@@ -208,7 +208,7 @@ class LoopImageSet:
             )
             min_x = str(round(math.degrees(res.x), 2))
             # min_y = str(round(res.fun,2))
-            edge_label = ''.join(['EDGE: Phi = ', min_x, u'\N{DEGREE SIGN}'])
+            edge_label = ''.join(['EDGE: Phi = ', min_x, '\N{DEGREE SIGN}'])
             props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
             axes.annotate(edge_label, (res.x + 0.2, res.fun), fontsize=14, bbox=props)
 
